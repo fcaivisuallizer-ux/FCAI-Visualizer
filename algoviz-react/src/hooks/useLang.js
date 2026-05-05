@@ -3,13 +3,6 @@ import { useState, useEffect } from 'react';
 const STORAGE_KEY = 'algoviz_lang';
 const VALID_LANGS = ['js', 'python', 'cpp', 'java', 'csharp'];
 
-/**
- * useLang — persists the user's preferred code language across refreshes.
- * Reads from localStorage on mount and writes back on every change.
- *
- * @param {string} defaultLang - fallback if nothing is stored yet
- * @returns {[string, Function]} [lang, setLang]
- */
 export function useLang(defaultLang = 'js') {
   const [lang, setLangState] = useState(() => {
     try {
