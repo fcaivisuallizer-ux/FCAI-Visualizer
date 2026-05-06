@@ -43,7 +43,11 @@ export function initGraphVisualizer(container) {
     <hr class="tree-divider"/>
     <section class="tree-section">
       <div class="tree-section-label">BFS TRAVERSAL</div>
-      <button class="tree-btn tree-btn-accent" id="gv-btn-start-bfs">Start BFS (Select Node)</button>
+      <div class="tree-gen-row">
+        <label>Start:</label>
+        <input class="tree-rand-input" id="gv-start-node" type="number" min="0" value="0" style="width:50px"/>
+        <button class="tree-btn tree-btn-accent sm" id="gv-btn-start-bfs">▶ Run BFS</button>
+      </div>
       <div id="gv-queue-display" style="margin-top:8px;font-size:12px;color:var(--text-muted);min-height:20px"></div>
       <div id="gv-path-display" style="margin-top:4px;font-size:12px;color:var(--accent);min-height:20px"></div>
     </section>
@@ -107,6 +111,7 @@ export function initGraphVisualizer(container) {
   const ctx = canvas.getContext('2d');
   let speedIdx = 0;
   let destroyed = false;
+  let bfsActive = false; // Guard against concurrent BFS executions
 
   // Graph state
   const graph = {
@@ -173,9 +178,11 @@ export function initGraphVisualizer(container) {
   }
 
   function resizeCanvas() {
-    canvas.width = canvas.clientWidth * devicePixelRatio;
-    canvas.height = canvas.clientHeight * devicePixelRatio;
-    ctx.scale(devicePixelRatio, devicePixelRatio);
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (w === 0 || h === 0) return; // Not laid out yet
+    canvas.width = w * devicePixelRatio;
+    canvas.height = h * devicePixelRatio;
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
     if (!camReady) resetCamera();
   }
 
@@ -187,7 +194,9 @@ export function initGraphVisualizer(container) {
 
   const onResize = () => { if (!destroyed) resizeCanvas(); };
   window.addEventListener('resize', onResize);
-  resizeCanvas();
+  resizeCanvas(); // try immediately
+  // Also retry after layout in case clientWidth was 0
+  requestAnimationFrame(() => { if (!destroyed) resizeCanvas(); });
 
   // Graph operations
   function createGraph() {
@@ -200,6 +209,7 @@ export function initGraphVisualizer(container) {
     graph.edges = [];
     graph.nodeCount = count;
     graph.bfsRunning = false;
+    bfsActive = false;
     graph.bfsQueue = [];
     graph.bfsVisited = new Set();
     graph.bfsPath = [];
@@ -218,18 +228,19 @@ export function initGraphVisualizer(container) {
         curX: cx + radius * Math.cos(angle),
         curY: cy + radius * Math.sin(angle),
         color: NODE_COLORS[i % NODE_COLORS.length],
-        state: 'default', // default, visiting, visited, queued
+        state: 'default',
         pulseTimer: 0,
-        alpha: 0,
+        alpha: 1, // Start fully visible
       });
     }
 
-    // Animate nodes appearing
-    graph.nodes.forEach(n => n.alpha = 0);
     showPopup(`Created graph with ${count} nodes`, '#48d782', 2);
-    setStatus('Graph Created', 'Click nodes to add edges');
-    canvasWrap.querySelector('#gv-queue-display').textContent = '';
-    canvasWrap.querySelector('#gv-path-display').textContent = '';
+    setStatus('Graph Created', 'Add edges, then click ▶ Run BFS');
+    // Also update start node max
+    const startInput = panel.querySelector('#gv-start-node');
+    if (startInput) startInput.max = count - 1;
+    panel.querySelector('#gv-queue-display').textContent = '';
+    panel.querySelector('#gv-path-display').textContent = '';
   }
 
   function addEdge(fromId, toId) {
@@ -249,6 +260,7 @@ export function initGraphVisualizer(container) {
   function resetGraph() {
     graph.edges = [];
     graph.bfsRunning = false;
+    bfsActive = false;
     graph.bfsQueue = [];
     graph.bfsVisited = new Set();
     graph.bfsPath = [];
@@ -258,8 +270,8 @@ export function initGraphVisualizer(container) {
       n.state = 'default';
       n.pulseTimer = 0;
     });
-    canvasWrap.querySelector('#gv-queue-display').textContent = '';
-    canvasWrap.querySelector('#gv-path-display').textContent = '';
+    panel.querySelector('#gv-queue-display').textContent = '';
+    panel.querySelector('#gv-path-display').textContent = '';
     showPopup('Graph reset', '#ff913c', 2);
     setStatus('Graph Reset', 'Ready for new edges');
   }
@@ -269,13 +281,14 @@ export function initGraphVisualizer(container) {
     graph.edges = [];
     graph.nodeCount = 0;
     graph.bfsRunning = false;
+    bfsActive = false;
     graph.bfsQueue = [];
     graph.bfsVisited = new Set();
     graph.bfsPath = [];
     graph.bfsCurrent = null;
     graph.pendingEdgeStart = null;
-    canvasWrap.querySelector('#gv-queue-display').textContent = '';
-    canvasWrap.querySelector('#gv-path-display').textContent = '';
+    panel.querySelector('#gv-queue-display').textContent = '';
+    panel.querySelector('#gv-path-display').textContent = '';
     canvasWrap.querySelector('#gv-export-popup').style.display = 'none';
     showPopup('Graph cleared', '#ff4b4b', 2);
     setStatus('Graph Cleared', 'Create nodes to start');
@@ -286,49 +299,61 @@ export function initGraphVisualizer(container) {
       showPopup('Create graph first!', '#ff4b4b', 2);
       return;
     }
+    if (bfsActive) {
+      showPopup('BFS is already running!', '#ff4b4b', 2);
+      return;
+    }
+    let startId = parseInt(panel.querySelector('#gv-start-node').value, 10);
+    if (isNaN(startId) || startId < 0 || startId >= graph.nodes.length) {
+      startId = 0;
+      panel.querySelector('#gv-start-node').value = '0';
+    }
     graph.bfsRunning = true;
-    graph.bfsQueue = [];
-    graph.bfsVisited = new Set();
-    graph.bfsPath = [];
-    graph.bfsCurrent = null;
-    setStatus('BFS Mode', 'Click a node to start BFS');
-    showPopup('Select START node for BFS', '#ff913c', 2.5);
+    bfsActive = false;
+    graph.pendingEdgeStart = null; // Clear any pending edge
+    runBFS(startId);
   }
 
   async function runBFS(startId) {
+    if (bfsActive) return; // Prevent concurrent executions
+    bfsActive = true;
+
     graph.bfsQueue = [startId];
     graph.bfsVisited = new Set([startId]);
     graph.bfsPath = [];
-    graph.nodes.forEach(n => n.state = 'default');
-    
+    graph.nodes.forEach(n => { n.state = 'default'; n.pulseTimer = 0; });
+
     const T = getT();
-    const speed = SPEED_TABLE[speedIdx];
 
     graph.nodes[startId].state = 'visiting';
     graph.nodes[startId].pulseTimer = 1.5;
     showPopup(`Starting BFS from node ${startId}`, T.accent, 2);
     setStatus(`BFS from ${startId}`, 'Queue: [' + startId + ']');
-    canvasWrap.querySelector('#gv-queue-display').textContent = `Queue: [${startId}]`;
-    canvasWrap.querySelector('#gv-path-display').textContent = `Visited: []`;
+    panel.querySelector('#gv-queue-display').textContent = `Queue: [${startId}]`;
+    panel.querySelector('#gv-path-display').textContent = `Visited: []`;
 
-    await sleep(1200 / speed);
+    await sleep(1200 / SPEED_TABLE[speedIdx]);
+    if (destroyed) { bfsActive = false; return; }
 
-    while (graph.bfsQueue.length > 0) {
+    while (graph.bfsQueue.length > 0 && !destroyed) {
       const current = graph.bfsQueue.shift();
       graph.bfsCurrent = current;
-      graph.nodes[current].state = 'visited';
-      graph.bfsPath.push(current);
+      graph.nodes[current].state = 'visiting';
+      graph.nodes[current].pulseTimer = 1;
 
       const queueStr = '[' + graph.bfsQueue.join(', ') + ']';
       const pathStr = '[' + graph.bfsPath.join(', ') + ']';
       setStatus(`Processing node ${current}`, `Queue: ${queueStr}`);
-      canvasWrap.querySelector('#gv-queue-display').textContent = `Queue: ${queueStr}`;
-      canvasWrap.querySelector('#gv-path-display').textContent = `Visited: ${pathStr}`;
+      panel.querySelector('#gv-queue-display').textContent = `Queue: ${queueStr}`;
+      panel.querySelector('#gv-path-display').textContent = `Visited: ${pathStr}`;
 
       showPopup(`Visiting node ${current}`, T.accent2, 1.5);
-      graph.nodes[current].pulseTimer = 1;
 
-      await sleep(1000 / speed);
+      await sleep(800 / SPEED_TABLE[speedIdx]);
+      if (destroyed) { bfsActive = false; return; }
+
+      graph.nodes[current].state = 'visited';
+      graph.bfsPath.push(current);
 
       // Find neighbors
       const neighbors = [];
@@ -341,24 +366,31 @@ export function initGraphVisualizer(container) {
         }
       });
 
-      neighbors.forEach(nid => {
+      for (const nid of neighbors) {
+        if (destroyed) { bfsActive = false; return; }
         if (!graph.bfsVisited.has(nid)) {
           graph.bfsVisited.add(nid);
           graph.bfsQueue.push(nid);
           graph.nodes[nid].state = 'queued';
-          graph.nodes[nid].pulseTimer = 0.8;
-        }
-      });
+          graph.nodes[nid].pulseTimer = 1.2;
 
-      await sleep(800 / speed);
+          panel.querySelector('#gv-queue-display').textContent = `Queue: [${graph.bfsQueue.join(', ')}]`;
+          await sleep(400 / SPEED_TABLE[speedIdx]);
+        }
+      }
+
+      await sleep(300 / SPEED_TABLE[speedIdx]);
     }
 
+    bfsActive = false;
     graph.bfsRunning = false;
     graph.bfsCurrent = null;
-    showPopup(`BFS Complete! Visited: ${graph.bfsPath.join(' → ')}`, T.success, 4);
-    setStatus('BFS Complete', `Visited ${graph.bfsPath.length} nodes`);
-    canvasWrap.querySelector('#gv-queue-display').textContent = '';
-    canvasWrap.querySelector('#gv-path-display').textContent = `Final: [${graph.bfsPath.join(', ')}]`;
+    if (!destroyed) {
+      showPopup(`BFS Complete! Visited: ${graph.bfsPath.join(' → ')}`, T.success, 4);
+      setStatus('BFS Complete', `Visited ${graph.bfsPath.length} nodes`);
+      panel.querySelector('#gv-queue-display').textContent = '';
+      panel.querySelector('#gv-path-display').textContent = `Final: [${graph.bfsPath.join(', ')}]`;
+    }
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -472,12 +504,8 @@ export function initGraphVisualizer(container) {
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
       const node = getNodeAt(mx, my);
       if (node) {
-        if (graph.bfsRunning) {
-          if (!graph.bfsVisited.has(node.id)) {
-            runBFS(node.id);
-            return;
-          }
-          return; // Prevent edge creation while BFS is running
+        if (bfsActive || graph.bfsRunning) {
+          return; // BFS is running or pending — ignore canvas clicks
         }
         if (graph.pendingEdgeStart !== null) {
           if (graph.pendingEdgeStart !== node.id) {

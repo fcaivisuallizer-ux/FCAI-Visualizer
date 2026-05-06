@@ -43,7 +43,11 @@ export function initDFSVisualizer(container) {
     <hr class="tree-divider"/>
     <section class="tree-section">
       <div class="tree-section-label">DFS TRAVERSAL</div>
-      <button class="tree-btn tree-btn-accent" id="dfs-btn-start-dfs">Start DFS (Select Node)</button>
+      <div class="tree-gen-row">
+        <label>Start:</label>
+        <input class="tree-rand-input" id="dfs-start-node" type="number" min="0" value="0" style="width:50px"/>
+        <button class="tree-btn tree-btn-accent sm" id="dfs-btn-start-dfs">▶ Run DFS</button>
+      </div>
       <div id="dfs-stack-display" style="margin-top:8px;font-size:12px;color:var(--text-muted);min-height:20px"></div>
       <div id="dfs-path-display" style="margin-top:4px;font-size:12px;color:var(--accent);min-height:20px"></div>
     </section>
@@ -116,6 +120,7 @@ export function initDFSVisualizer(container) {
   const ctx = canvas.getContext('2d');
   let speedIdx = 0;
   let destroyed = false;
+  let dfsActive = false; // Guard against concurrent DFS executions
 
   // Graph state
   const graph = {
@@ -186,9 +191,11 @@ export function initDFSVisualizer(container) {
   }
 
   function resizeCanvas() {
-    canvas.width = canvas.clientWidth * devicePixelRatio;
-    canvas.height = canvas.clientHeight * devicePixelRatio;
-    ctx.scale(devicePixelRatio, devicePixelRatio);
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (w === 0 || h === 0) return;
+    canvas.width = w * devicePixelRatio;
+    canvas.height = h * devicePixelRatio;
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
     if (!camReady) resetCamera();
   }
 
@@ -201,6 +208,7 @@ export function initDFSVisualizer(container) {
   const onResize = () => { if (!destroyed) resizeCanvas(); };
   window.addEventListener('resize', onResize);
   resizeCanvas();
+  requestAnimationFrame(() => { if (!destroyed) resizeCanvas(); });
 
   // Graph operations
   function createGraph() {
@@ -214,6 +222,7 @@ export function initDFSVisualizer(container) {
     graph.edgeTypes = new Map();
     graph.nodeCount = count;
     graph.dfsRunning = false;
+    dfsActive = false;
     graph.dfsStack = [];
     graph.dfsVisited = new Set();
     graph.dfsPath = [];
@@ -236,17 +245,18 @@ export function initDFSVisualizer(container) {
         color: NODE_COLORS[i % NODE_COLORS.length],
         state: 'default',
         pulseTimer: 0,
-        alpha: 0,
+        alpha: 1, // Start fully visible
         discTime: null,
         finTime: null,
       });
     }
 
-    graph.nodes.forEach(n => n.alpha = 0);
     showPopup(`Created graph with ${count} nodes`, '#48d782', 2);
-    setStatus('Graph Created', 'Click nodes to add edges');
-    canvasWrap.querySelector('#dfs-stack-display').textContent = '';
-    canvasWrap.querySelector('#dfs-path-display').textContent = '';
+    setStatus('Graph Created', 'Add edges, then click ▶ Run DFS');
+    const startInput = panel.querySelector('#dfs-start-node');
+    if (startInput) startInput.max = count - 1;
+    panel.querySelector('#dfs-stack-display').textContent = '';
+    panel.querySelector('#dfs-path-display').textContent = '';
   }
 
   function addEdge(fromId, toId) {
@@ -267,6 +277,7 @@ export function initDFSVisualizer(container) {
     graph.edges = [];
     graph.edgeTypes = new Map();
     graph.dfsRunning = false;
+    dfsActive = false;
     graph.dfsStack = [];
     graph.dfsVisited = new Set();
     graph.dfsPath = [];
@@ -281,8 +292,8 @@ export function initDFSVisualizer(container) {
       n.discTime = null;
       n.finTime = null;
     });
-    canvasWrap.querySelector('#dfs-stack-display').textContent = '';
-    canvasWrap.querySelector('#dfs-path-display').textContent = '';
+    panel.querySelector('#dfs-stack-display').textContent = '';
+    panel.querySelector('#dfs-path-display').textContent = '';
     showPopup('Graph reset', '#ff913c', 2);
     setStatus('Graph Reset', 'Ready for new edges');
   }
@@ -293,6 +304,7 @@ export function initDFSVisualizer(container) {
     graph.edgeTypes = new Map();
     graph.nodeCount = 0;
     graph.dfsRunning = false;
+    dfsActive = false;
     graph.dfsStack = [];
     graph.dfsVisited = new Set();
     graph.dfsPath = [];
@@ -301,8 +313,8 @@ export function initDFSVisualizer(container) {
     graph.time = 0;
     graph.discoveryTime = {};
     graph.finishTime = {};
-    canvasWrap.querySelector('#dfs-stack-display').textContent = '';
-    canvasWrap.querySelector('#dfs-path-display').textContent = '';
+    panel.querySelector('#dfs-stack-display').textContent = '';
+    panel.querySelector('#dfs-path-display').textContent = '';
     canvasWrap.querySelector('#dfs-export-popup').style.display = 'none';
     showPopup('Graph cleared', '#ff4b4b', 2);
     setStatus('Graph Cleared', 'Create nodes to start');
@@ -313,22 +325,19 @@ export function initDFSVisualizer(container) {
       showPopup('Create graph first!', '#ff4b4b', 2);
       return;
     }
+    if (dfsActive) {
+      showPopup('DFS is already running!', '#ff4b4b', 2);
+      return;
+    }
+    let startId = parseInt(panel.querySelector('#dfs-start-node').value, 10);
+    if (isNaN(startId) || startId < 0 || startId >= graph.nodes.length) {
+      startId = 0;
+      panel.querySelector('#dfs-start-node').value = '0';
+    }
     graph.dfsRunning = true;
-    graph.dfsStack = [];
-    graph.dfsVisited = new Set();
-    graph.dfsPath = [];
-    graph.dfsCurrent = null;
-    graph.time = 0;
-    graph.discoveryTime = {};
-    graph.finishTime = {};
-    graph.edgeTypes = new Map();
-    graph.nodes.forEach(n => {
-      n.state = 'default';
-      n.discTime = null;
-      n.finTime = null;
-    });
-    setStatus('DFS Mode', 'Click a node to start DFS');
-    showPopup('Select START node for DFS', '#ff913c', 2.5);
+    dfsActive = false;
+    graph.pendingEdgeStart = null;
+    runDFS(startId);
   }
 
   function classifyEdge(fromId, toId) {
@@ -346,8 +355,10 @@ export function initDFSVisualizer(container) {
   }
 
   async function runDFS(startId) {
+    if (dfsActive) return; // Prevent concurrent executions
+    dfsActive = true;
+
     const T = getT();
-    const speed = SPEED_TABLE[speedIdx];
 
     graph.dfsStack = [startId];
     graph.dfsVisited = new Set([startId]);
@@ -362,17 +373,19 @@ export function initDFSVisualizer(container) {
 
     showPopup(`Starting DFS from node ${startId}`, T.accent, 2);
     setStatus(`DFS from ${startId}`, `Stack: [${startId}]`);
-    canvasWrap.querySelector('#dfs-stack-display').textContent = `Stack: [${startId}]`;
-    canvasWrap.querySelector('#dfs-path-display').textContent = `Visited: []`;
+    panel.querySelector('#dfs-stack-display').textContent = `Stack: [${startId}]`;
+    panel.querySelector('#dfs-path-display').textContent = `Visited: []`;
 
-    await sleep(1200 / speed);
+    await sleep(1200 / SPEED_TABLE[speedIdx]);
+    if (destroyed) { dfsActive = false; return; }
 
-    while (graph.dfsStack.length > 0) {
+    while (graph.dfsStack.length > 0 && !destroyed) {
       const current = graph.dfsStack[graph.dfsStack.length - 1];
       graph.dfsCurrent = current;
-      graph.nodes[current].state = 'visited';
+      graph.nodes[current].state = 'visiting';
+      graph.nodes[current].pulseTimer = 1;
 
-      // Check if we need to backtrack
+      // Find unvisited neighbors
       const neighbors = [];
       graph.edges.forEach(e => {
         if (e.from === current && !graph.dfsVisited.has(e.to)) {
@@ -398,11 +411,11 @@ export function initDFSVisualizer(container) {
         const stackStr = '[' + graph.dfsStack.join(', ') + ']';
         const pathStr = '[' + graph.dfsPath.join(', ') + ']';
         setStatus(`Visiting node ${next}`, `Stack: ${stackStr}`);
-        canvasWrap.querySelector('#dfs-stack-display').textContent = `Stack: ${stackStr}`;
-        canvasWrap.querySelector('#dfs-path-display').textContent = `Visited: ${pathStr}`;
+        panel.querySelector('#dfs-stack-display').textContent = `Stack: ${stackStr}`;
+        panel.querySelector('#dfs-path-display').textContent = `Visited: ${pathStr}`;
 
         showPopup(`Exploring ${next} via ${edgeType} edge`, getEdgeColor(edgeType), 1.5);
-        await sleep(1000 / speed);
+        await sleep(900 / SPEED_TABLE[speedIdx]);
       } else {
         // Backtrack
         const popped = graph.dfsStack.pop();
@@ -414,21 +427,25 @@ export function initDFSVisualizer(container) {
         const stackStr = '[' + graph.dfsStack.join(', ') + ']';
         const pathStr = '[' + graph.dfsPath.join(', ') + ']';
         setStatus(`Backtrack from ${popped}`, `Stack: ${stackStr}`);
-        canvasWrap.querySelector('#dfs-stack-display').textContent = `Stack: ${stackStr}`;
-        canvasWrap.querySelector('#dfs-path-display').textContent = `Visited: ${pathStr}`;
+        panel.querySelector('#dfs-stack-display').textContent = `Stack: ${stackStr}`;
+        panel.querySelector('#dfs-path-display').textContent = `Visited: ${pathStr}`;
 
         showPopup(`Finished node ${popped} (time: ${graph.finishTime[popped]})`, T.accent2, 1);
-        await sleep(800 / speed);
+        await sleep(700 / SPEED_TABLE[speedIdx]);
       }
+      if (destroyed) { dfsActive = false; return; }
     }
 
+    dfsActive = false;
     graph.dfsRunning = false;
     graph.dfsCurrent = null;
-    const pathStr = graph.dfsPath.join(' → ');
-    showPopup(`DFS Complete! Path: ${pathStr}`, T.success, 4);
-    setStatus('DFS Complete', `Visited ${graph.dfsPath.length} nodes`);
-    canvasWrap.querySelector('#dfs-stack-display').textContent = '';
-    canvasWrap.querySelector('#dfs-path-display').textContent = `Final: [${graph.dfsPath.join(', ')}] (d:${graph.discoveryTime[graph.dfsPath[0]]}, f:${graph.finishTime[graph.dfsPath[graph.dfsPath.length-1]]})`;
+    if (!destroyed) {
+      const pathStr = graph.dfsPath.join(' → ');
+      showPopup(`DFS Complete! Path: ${pathStr}`, T.success, 4);
+      setStatus('DFS Complete', `Visited ${graph.dfsPath.length} nodes`);
+      panel.querySelector('#dfs-stack-display').textContent = '';
+      panel.querySelector('#dfs-path-display').textContent = `Final: [${graph.dfsPath.join(', ')}]`;
+    }
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -535,12 +552,8 @@ export function initDFSVisualizer(container) {
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
       const node = getNodeAt(mx, my);
       if (node) {
-        if (graph.dfsRunning) {
-          if (!graph.dfsVisited.has(node.id)) {
-            runDFS(node.id);
-            return;
-          }
-          return; // Prevent edge creation while DFS is running
+        if (dfsActive || graph.dfsRunning) {
+          return; // DFS is running or pending — ignore canvas clicks
         }
         if (graph.pendingEdgeStart !== null) {
           if (graph.pendingEdgeStart !== node.id) {
