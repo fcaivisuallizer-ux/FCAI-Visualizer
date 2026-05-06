@@ -125,7 +125,7 @@ export function initGraphVisualizer(container) {
 
   const cam = { x: 0, y: 0, zoom: 1, offsetX: 0, offsetY: 0 };
   let camReady = false;
-  let isDragging = false, isPanning = false, dragStartX = 0, dragStartY = 0, lastClickTime = 0;
+  let isPanning = false, dragStartX = 0, dragStartY = 0, lastClickTime = 0;
   let draggedNode = null, draggedNodeOffset = { x: 0, y: 0 };
 
   let popupTimer = 0, popupMaxT = 0;
