@@ -3,9 +3,73 @@ const MODEL = import.meta.env.VITE_OPENROUTER_MODEL || 'openrouter/auto';
 
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+const CACHE_STORAGE_KEY = 'algoviz_question_cache';
+const MAX_CACHE_PER_KEY = 20;
+const BATCH_SIZE = 3;
 
+const questionCache = new Map();
+
+function getCacheKey(topic, subTopic, difficulty, questionMode, language) {
+  return `${topic}_${subTopic || topic}_${difficulty}_${questionMode}_${language}`;
+}
+
+function loadCacheFromStorage() {
+  try {
+    const stored = localStorage.getItem(CACHE_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      Object.entries(parsed).forEach(([key, questions]) => {
+        questionCache.set(key, questions);
+      });
+    }
+  } catch (e) {
+    console.error('Failed to load cache from storage:', e);
+  }
+}
+
+function saveCacheToStorage() {
+  try {
+    const cacheObj = Object.fromEntries(questionCache);
+    localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(cacheObj));
+  } catch (e) {
+    console.error('Failed to save cache to storage:', e);
+  }
+}
+
+function getCachedQuestion(topic, subTopic, difficulty, questionMode, language) {
+  if (questionCache.size === 0) {
+    loadCacheFromStorage();
+  }
+  
+  const key = getCacheKey(topic, subTopic, difficulty, questionMode, language);
+  const questions = questionCache.get(key);
+  
+  if (questions && questions.length > 0) {
+    return questions.pop();
+  }
+  return null;
+}
+
+function cacheQuestions(topic, subTopic, difficulty, questionMode, language, questions) {
+  const key = getCacheKey(topic, subTopic, difficulty, questionMode, language);
+  const existing = questionCache.get(key) || [];
+  
+  const combined = [...existing, ...questions].slice(-MAX_CACHE_PER_KEY);
+  questionCache.set(key, combined);
+  saveCacheToStorage();
+}
+
+loadCacheFromStorage();
 
 export async function generateQuestion(topic, subTopic, difficulty, questionType = 'mcq', questionMode = 'general', language = 'javascript') {
+  const cached = getCachedQuestion(topic, subTopic, difficulty, questionMode, language);
+  if (cached) {
+    return cached;
+  }
+
+  const useSingleQuestion = questionMode === 'code' || questionMode === 'complexity';
+  const questionCount = useSingleQuestion ? 1 : BATCH_SIZE;
+
   let modeDescription = '';
   const topicName = subTopic || topic;
   const langName = { js: 'JavaScript', python: 'Python', cpp: 'C++', java: 'Java', csharp: 'C#' }[language] || 'JavaScript';
@@ -17,79 +81,121 @@ export async function generateQuestion(topic, subTopic, difficulty, questionType
   } else {
     modeDescription = 'Focus on conceptual understanding, algorithms properties, and real-world applications.';
   }
-  
+
   const systemPrompt = `You are an expert Computer Science educator specializing in algorithms and data structures.
-Generate a ${difficulty} difficulty multiple choice question about ${topicName}.
-The question should test understanding, not just memorization.
+You are helping students learn on AlgoViz, an interactive visual platform for tracing algorithms and data structures.
+Generate ${questionCount} unique ${difficulty} difficulty multiple choice question${questionCount > 1 ? 's' : ''} about ${topicName}.
+Each question should test understanding, not just memorization.
 
 ${modeDescription}
 
 Guidelines:
-- For MCQ: Include 4 options where only ONE is correct
+- For MCQ: Include 4 options where only ONE is correct per question
 - Include a brief explanation of why the correct answer is right
 - Make incorrect options plausible (common mistakes students make)
 - ${difficulty === 'easy' ? 'Focus on basic concepts and definitions' : difficulty === 'medium' ? 'Require application of concepts' : 'Require analysis, optimization, or debugging skills'}
 - Make questions unique and different from common textbook examples
+- For trace-related questions, ask about specific steps (e.g., "what happens after this node is deleted", "how does the array look after 2 passes")
 - If including code, put it in the question text
+- ${questionCount === 1 
+  ? `Generate exactly ONE question in JSON format (not an array):
+{"question": "...", "type": "${questionType}", "difficulty": "${difficulty}", "topic": "${topic}", "subTopic": "${subTopic || topic}", "questionMode": "${questionMode}", "options": ["A) option1", "B) option2", "C) option3", "D) option4"], "correctAnswer": "A", "explanation": "..."}`
+  : `Generate exactly ${BATCH_SIZE} questions in a JSON array:
+[{"question": "...", "type": "${questionType}", "difficulty": "${difficulty}", "topic": "${topic}", "subTopic": "${subTopic || topic}", "questionMode": "${questionMode}", "options": ["A) option1", "B) option2", "C) option3", "D) option4"], "correctAnswer": "A", "explanation": "..."}, ...]`
+}
+- Do NOT include any text outside the JSON`;
 
-Return your response as a JSON object with this exact structure:
-{
-  "question": "The question text",
-  "type": "${questionType}",
-  "difficulty": "${difficulty}",
-  "topic": "${topic}",
-  "subTopic": "${subTopic || topic}",
-  "questionMode": "${questionMode}",
-  "options": ["A) option1", "B) option2", "C) option3", "D) option4"],
-  "correctAnswer": "A", 
-  "explanation": "Why the correct answer is correct"
-}`;
+  const userPrompt = questionCount === 1
+    ? `Generate ONE unique ${difficulty} question about ${topicName} (${questionMode} mode).
+Make it different from standard textbook examples. Focus on ${topic} algorithms and include trace-related questions when applicable.`
+    : `Generate ${BATCH_SIZE} unique ${difficulty} questions about ${topicName} (${questionMode} mode).
+Make them different from standard textbook examples. Focus on ${topic} algorithms and include trace-related questions when applicable.`;
 
-  const userPrompt = `Generate a unique ${difficulty} question about ${topicName} (${questionMode} mode).
-Make it different from standard textbook examples. Focus on ${topic} algorithms.`;
+  const maxRetries = 2;
+  let lastError = null;
 
-  try {
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://algoviz.example.com',
-        'X-Title': 'AlgoViz AI Training',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 2048,
-        temperature: 0.7,
-      }),
-    });
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const isRetryAttempt = attempt > 0;
+    const useSingleOnRetry = isRetryAttempt && !useSingleQuestion;
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API error: ${error}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    
     try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-    } catch (parseError) {
-      console.error('Failed to parse AI response:', parseError);
-    }
+      const actualQuestionCount = useSingleOnRetry ? 1 : questionCount;
+      const actualSystemPrompt = useSingleOnRetry
+        ? systemPrompt.replace(`Generate ${BATCH_SIZE} questions`, 'Generate ONE question').replace('in a JSON array:', 'in JSON format (not an array):').replace(/\[[\s\S]*\]/g, '{"question": "...", "type": "mcq", "difficulty": "easy", "topic": "topic", "subTopic": "topic", "questionMode": "general", "options": ["A) opt1", "B) opt2", "C) opt3", "D) opt4"], "correctAnswer": "A", "explanation": "..."}')
+        : systemPrompt;
 
-    return generateFallbackQuestion(topic, subTopic, difficulty, questionType);
-  } catch (error) {
-    console.error('AI Service Error:', error);
-    throw error;
+      const actualUserPrompt = useSingleOnRetry
+        ? `Generate ONE unique ${difficulty} question about ${topicName} (${questionMode} mode).`
+        : userPrompt;
+
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://algoviz.example.com',
+          'X-Title': 'AlgoViz AI Training',
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            { role: 'system', content: actualSystemPrompt },
+            { role: 'user', content: actualUserPrompt },
+          ],
+          max_tokens: 2048,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`API error: ${error}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+
+      try {
+        let parsed;
+        if (actualQuestionCount === 1) {
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsed = JSON.parse(jsonMatch[0]);
+            if (parsed && parsed.question && parsed.options && parsed.correctAnswer) {
+              return parsed;
+            }
+          }
+        } else {
+          const jsonMatch = content.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            parsed = JSON.parse(jsonMatch[0]);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const questionToReturn = parsed[0];
+              const remainingQuestions = parsed.slice(1);
+              if (remainingQuestions.length > 0) {
+                cacheQuestions(topic, subTopic, difficulty, questionMode, language, remainingQuestions);
+              }
+              return questionToReturn;
+            }
+          }
+        }
+        throw new Error(`Parsed JSON does not have required fields. Content: ${content.substring(0, 200)}`);
+      } catch (parseError) {
+        console.error(`Parse attempt ${attempt + 1} failed: ${parseError.message}`);
+        console.error('Raw response:', content.substring(0, 500));
+        lastError = new Error(`Parsing failed: ${parseError.message}. Raw response: ${content.substring(0, 200)}`);
+      }
+    } catch (error) {
+      console.error(`AI Service Attempt ${attempt + 1} failed:`, error);
+      lastError = error;
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+    }
   }
+
+  console.error('All AI retries failed:', lastError?.message);
+  throw new Error(`AI failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
 }
 
 export async function evaluateAnswer(question, userAnswer, explanation) {
@@ -199,84 +305,6 @@ Return JSON:
   } catch {
     return generateFallbackTraceStep(algorithm, arrayState, stepNumber);
   }
-}
-
-function generateFallbackQuestion(topic, subTopic, difficulty, type) {
-  const questions = {
-    sorting: {
-      easy: {
-        question: "What is the time complexity of Quick Sort in the average case?",
-        options: ["A) O(n)", "B) O(n log n)", "C) O(n²)", "D) O(log n)"],
-        correctAnswer: "B",
-        explanation: "Quick Sort has O(n log n) average case complexity due to the divide-and-conquer strategy.",
-      },
-      medium: {
-        question: "Which sorting algorithm is most efficient for nearly sorted arrays?",
-        options: ["A) Quick Sort", "B) Merge Sort", "C) Insertion Sort", "D) Heap Sort"],
-        correctAnswer: "C",
-        explanation: "Insertion Sort performs in O(n) time for nearly sorted arrays.",
-      },
-      hard: {
-        question: "Which algorithm would you choose for sorting with worst-case guarantees?",
-        options: ["A) Quick Sort", "B) Heap Sort", "C) Merge Sort", "D) Bubble Sort"],
-        correctAnswer: "B",
-        explanation: "Heap Sort guarantees O(n log n) worst-case time complexity.",
-      },
-    },
-    searching: {
-      easy: {
-        question: "What is the time complexity of Binary Search?",
-        options: ["A) O(n)", "B) O(log n)", "C) O(n²)", "D) O(1)"],
-        correctAnswer: "B",
-        explanation: "Binary Search halves the search space with each iteration, giving O(log n).",
-      },
-      medium: {
-        question: "Binary Search requires which data structure property?",
-        options: ["A) Linked", "B) Sorted", "C) Balanced", "D) Dense"],
-        correctAnswer: "B",
-        explanation: "Binary Search only works on sorted arrays.",
-      },
-      hard: {
-        question: "What is the space complexity of iterative Binary Search?",
-        options: ["A) O(n)", "B) O(log n)", "C) O(1)", "D) O(n log n)"],
-        correctAnswer: "C",
-        explanation: "Iterative Binary Search uses only constant extra space.",
-      },
-    },
-    trees: {
-      easy: {
-        question: "What is the time complexity of searching in a balanced BST?",
-        options: ["A) O(n)", "B) O(log n)", "C) O(n²)", "D) O(1)"],
-        correctAnswer: "B",
-        explanation: "Balanced BST guarantees O(log n) search by halving the search space.",
-      },
-      medium: {
-        question: "What rotation balances an AVL tree with a Left-Left case?",
-        options: ["A) Right rotation", "B) Left rotation", "C) LR rotation", "D) RL rotation"],
-        correctAnswer: "A",
-        explanation: "Left-Left case is corrected with a single right rotation.",
-      },
-      hard: {
-        question: "In a B-Tree of order m, what is the maximum children per node?",
-        options: ["A) m", "B) m-1", "C) m+1", "D) ceil(m/2)"],
-        correctAnswer: "A",
-        explanation: "A B-Tree of order m can have at most m children per node.",
-      },
-    },
-  };
-
-  const topicQuestions = questions[topic] || questions.sorting;
-  const difficultyQuestions = topicQuestions[difficulty] || topicQuestions.easy;
-
-  return {
-    ...difficultyQuestions,
-    type: type,
-    difficulty: difficulty,
-    topic: topic,
-    subTopic: subTopic || topic,
-    questionMode: type,
-    hints: ["Review the fundamental concepts", "Think about divide-and-conquer"],
-  };
 }
 
 function generateFallbackTraceStep(algorithm, array, step) {

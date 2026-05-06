@@ -21,7 +21,7 @@ const TOPIC_COLORS = {
 
 const MODES = [
   { id: 'quiz', title: 'AI Quiz', description: 'Multiple choice questions', icon: '⊕' },
-  { id: 'trace', title: 'Tracing', description: 'Step-by-step practice', icon: '⟳' },
+  { id: 'trace', title: 'Tracing', description: 'Step-by-step practice', icon: '⟳', badge: 'New' },
 ];
 
 export default function PracticeMode() {

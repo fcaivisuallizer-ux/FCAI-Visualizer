@@ -23,4 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .env
+agent.md
 
+.agents
+skills-lock

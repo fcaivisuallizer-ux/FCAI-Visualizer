@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { generateQuestion } from '../../services/aiService';
 import { useLang } from '../../hooks/useLang';
+import { complexity, algoNames, codeSnippets } from '../../data/algorithmData';
 
 const CODE_LANGUAGES = [
   { value: 'js', label: 'JavaScript' },
@@ -10,13 +11,25 @@ const CODE_LANGUAGES = [
 ];
 
 function CodeBlock({ question }) {
-  const codeMatch = question.match(/```[\s\S]*?```/);
-  const code = codeMatch ? codeMatch[0].replace(/```\w*\n?/g, '').trim() : '';
-  const text = question.replace(/```[\s\S]*?```/g, '').trim();
+  const codeBlockMatch = question.match(/```[\s\S]*?```/);
+  const codeBlock = codeBlockMatch ? codeBlockMatch[0].replace(/```\w*\n?/g, '').trim() : '';
+  
+  const inlineCodeMatch = question.match(/`(?:[^`\n]+)`/g);
+  
+  const textBeforeCode = codeBlockMatch 
+    ? question.split(/```[\s\S]*?```/)[0].trim() 
+    : question;
+  
+  const textAfterCode = codeBlockMatch
+    ? question.split(/```[\s\S]*?```/).slice(1).join(' ').trim()
+    : '';
+
+  const hasSubstantialCode = codeBlock && codeBlock.length > 20;
+  const hasInlineCode = inlineCodeMatch && inlineCodeMatch.length > 0;
   
   return (
-    <>
-      {code && (
+    <div className="code-question-container">
+      {hasSubstantialCode && (
         <pre style={{ 
           background: 'var(--surface2)', 
           padding: '1rem', 
@@ -26,13 +39,39 @@ function CodeBlock({ question }) {
           fontSize: '0.85rem',
           marginBottom: '1rem',
           border: '1px solid var(--border)',
-          whiteSpace: 'pre-wrap'
+          whiteSpace: 'pre-wrap',
+          maxHeight: '300px'
         }}>
-          <code>{code}</code>
+          <code>{codeBlock}</code>
         </pre>
       )}
-      {text && <h3 className="quiz-question-text">{text}</h3>}
-    </>
+      
+      {textBeforeCode && textBeforeCode.length > 10 && (
+        <h3 className="quiz-question-text">{textBeforeCode}</h3>
+      )}
+      
+      {hasInlineCode && !hasSubstantialCode && (
+        <div style={{ 
+          marginBottom: '1rem', 
+          padding: '0.75rem',
+          background: 'var(--surface2)',
+          borderRadius: '6px',
+          border: '1px solid var(--border)'
+        }}>
+          <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>
+            {inlineCodeMatch.join(' ').replace(/`/g, '')}
+          </code>
+        </div>
+      )}
+      
+      {textAfterCode && textAfterCode.length > 5 && (
+        <p style={{ color: 'var(--text)', marginTop: '0.5rem' }}>{textAfterCode}</p>
+      )}
+      
+      {!hasSubstantialCode && !hasInlineCode && !textBeforeCode && (
+        <h3 className="quiz-question-text">{question}</h3>
+      )}
+    </div>
   );
 }
 
@@ -66,6 +105,8 @@ const FALLBACK_QUESTIONS = {
         { q: "What does this code do?\n```\nfor i in range(n):\n  for j in range(n-i-1):\n    if arr[j] > arr[j+1]:\n      swap(arr, j, j+1)\n```", options: ["A) Selection Sort", "B) Bubble Sort", "C) Insertion Sort", "D) Quick Sort"], answer: "B", exp: "Nested loops with adjacent swaps = Bubble Sort" },
         { q: "What is the time complexity?\n```\nfor i in range(n):\n  min_idx = i\n  for j in range(i+1, n):\n    if arr[j] < arr[min_idx]:\n      min_idx = j\n  swap(arr, i, min_idx)\n```", options: ["A) O(n)", "B) O(n log n)", "C) O(n²)", "D) O(1)"], answer: "C", exp: "Two nested loops = O(n²)" },
         { q: "Which algorithm uses this pattern?\n```\nkey = arr[i]\nwhile j >= 0 and arr[j] > key:\n  arr[j+1] = arr[j]\n  j -= 1\narr[j+1] = key\n```", options: ["A) Bubble", "B) Selection", "C) Insertion", "D) Merge"], answer: "C", exp: "Shifting elements right = Insertion Sort" },
+        { q: "What does this code implement?\n```\nmid = (low + high) // 2\nif arr[mid] == target: return mid\nelif arr[mid] < target: low = mid + 1\nelse: high = mid - 1\n```", options: ["A) Linear Search", "B) Binary Search", "C) Jump Search", "D) Exponential Search"], answer: "B", exp: "Binary search halves the search space each iteration" },
+        { q: "What algorithm does this implement?\n```\nmin = arr[0]\nfor x in arr:\n  if x < min: min = x\nreturn min\n```", options: ["A) Find Max", "B) Find Min", "C) Linear Search", "D) Both A and B"], answer: "D", exp: "This finds both minimum and maximum in one pass" },
       ],
       medium: [
         { q: "What does partition() do in Quick Sort?", options: ["A) Splits array", "B) Finds pivot position", "C) Sorts completely", "D) Merges"], answer: "B", exp: "Partitions around pivot" },
@@ -114,13 +155,17 @@ const FALLBACK_QUESTIONS = {
     },
     complexity: {
       easy: [
-        { q: "Linear search time?", options: ["A) O(1)", "B) O(n)", "C) O(log n)", "D) O(n²)"], answer: "B" },
-        { q: "Binary search time?", options: ["A) O(n)", "B) O(log n)", "C) O(n²)", "D) O(1)"], answer: "B" },
+        { q: "Linear search time?", options: ["A) O(1)", "B) O(n)", "C) O(log n)", "D) O(n²)"], answer: "B", exp: "May need to check all elements" },
+        { q: "Binary search time?", options: ["A) O(n)", "B) O(log n)", "C) O(n²)", "D) O(1)"], answer: "B", exp: "Halves search space each iteration" },
+        { q: "Linear search space?", options: ["A) O(n)", "B) O(1)", "C) O(log n)", "D) O(n²)"], answer: "B", exp: "Only needs constant extra space" },
       ],
       medium: [
-        { q: "Jump search uses?", options: ["A) O(√n)", "B) O(log n)", "C) O(n)", "D) O(1)"], answer: "A", exp: "Jumps by √n" },
+        { q: "Jump search uses?", options: ["A) O(√n)", "B) O(log n)", "C) O(n)", "D) O(1)"], answer: "A", exp: "Jumps by √n then linear search" },
+        { q: "Binary search requires?", options: ["A) Unsorted array", "B) Sorted array", "C) Linked list", "D) Hash table"], answer: "B", exp: "Only works on sorted data" },
       ],
-      hard: []
+      hard: [
+        { q: "Exponential search range?", options: ["A) O(1)", "B) O(log n)", "C) O(n)", "D) O(n log n)"], answer: "B", exp: "Exponential then binary search" },
+      ]
     }
   },
   trees: {
@@ -203,6 +248,8 @@ const FALLBACK_QUESTIONS = {
       easy: [
         { q: "```\nqueue = [start]\nwhile queue:\n  node = queue.pop(0)\n  visit(node)\n  for neighbor in adj[node]:\n    queue.append(neighbor)\n```\nWhat is this?", options: ["A) DFS", "B) BFS", "C) Dijkstra", "D) Prim"], answer: "B", exp: "Uses queue, visits level by level" },
         { q: "```\nstack = [start]\nwhile stack:\n  node = stack.pop()\n  visit(node)\n  for neighbor in adj[node]:\n    stack.append(neighbor)\n```\nWhat is this?", options: ["A) BFS", "B) DFS", "C) Dijkstra", "D) Prim"], answer: "B", exp: "Uses stack, goes deep first" },
+        { q: "What data structure does BFS use?", options: ["A) Stack", "B) Queue", "C) Heap", "D) Tree"], answer: "B", exp: "BFS uses queue for level-order traversal" },
+        { q: "What data structure does DFS use?", options: ["A) Queue", "B) Stack", "C) Heap", "D) Array"], answer: "B", exp: "DFS uses stack (or recursion) for depth-first traversal" },
       ],
       medium: [
         { q: "Dijkstra uses?", options: ["A) Stack", "B) Queue", "C) Priority queue", "D) Array"], answer: "C", exp: "Extract min repeatedly" },
@@ -237,9 +284,59 @@ const TOPIC_COLORS = {
   graphs: { bg: 'rgba(247, 197, 159, 0.15)', border: '#f7c59f', text: '#f7c59f' },
 };
 
-function getRandomQuestion(topic, questionType = 'general') {
+function getRandomQuestion(topic, questionType = 'general', lang = 'js') {
   const levels = ['easy', 'medium', 'hard'];
   const typeKey = questionType === 'code' ? 'code' : questionType === 'complexity' ? 'complexity' : 'general';
+
+  const topicAlgos = {
+    sorting: ['bubble', 'selection', 'insertion', 'merge', 'quick', 'heap', 'counting', 'radix'],
+    searching: ['linear-search', 'binary-search', 'jump-search'],
+    trees: ['bst', 'avl', 'binary-tree', 'heap-tree'],
+    graphs: ['bfs', 'dfs', 'dijkstra', 'prim', 'kruskal']
+  };
+
+  const algos = topicAlgos[topic] || topicAlgos.sorting;
+  const randomAlgo = algos[Math.floor(Math.random() * algos.length)];
+  
+  if (questionType === 'complexity') {
+    const comp = complexity[randomAlgo];
+    if (comp) {
+      const complexityQuestions = generateComplexityQuestions(randomAlgo, comp, topic);
+      if (complexityQuestions.length > 0) {
+        const random = complexityQuestions[Math.floor(Math.random() * complexityQuestions.length)];
+        return {
+          question: random.q,
+          options: random.options,
+          correctAnswer: random.answer,
+          explanation: random.exp,
+          topic: topic,
+          source: 'built-in',
+          level: random.level,
+          questionType: questionType,
+          algorithm: randomAlgo
+        };
+      }
+    }
+  }
+
+  if (questionType === 'code') {
+    const codeQuestions = generateCodeQuestions(randomAlgo, topic, lang);
+    if (codeQuestions.length > 0) {
+      const random = codeQuestions[Math.floor(Math.random() * codeQuestions.length)];
+      return {
+        question: random.q,
+        options: random.options,
+        correctAnswer: random.answer,
+        explanation: random.exp,
+        topic: topic,
+        source: 'built-in',
+        level: random.level,
+        questionType: questionType,
+        algorithm: randomAlgo,
+        language: lang
+      };
+    }
+  }
 
   for (let i = 0; i < levels.length; i++) {
     const level = levels[i];
@@ -254,7 +351,8 @@ function getRandomQuestion(topic, questionType = 'general') {
         topic: topic,
         source: 'built-in',
         level: level,
-        questionType: questionType
+        questionType: questionType,
+        algorithm: randomAlgo
       };
     }
   }
@@ -268,8 +366,210 @@ function getRandomQuestion(topic, questionType = 'general') {
     topic: topic,
     source: 'built-in',
     level: 'easy',
-    questionType: questionType
+    questionType: questionType,
+    algorithm: randomAlgo
   };
+}
+
+function generateComplexityQuestions(algoKey, comp, topic) {
+  const questions = [];
+  
+  if (comp.best) {
+    questions.push({
+      q: `What is the best case time complexity of ${algoNames[algoKey] || algoKey}?`,
+      options: [`A) ${comp.best}`, `B) ${comp.avg}`, `C) ${comp.worst}`, `D) O(1)`],
+      answer: 'A',
+      exp: `Best case: ${comp.best} - ${comp.note || 'optimal input conditions'}`,
+      level: 'easy'
+    });
+  }
+  
+  if (comp.avg) {
+    questions.push({
+      q: `What is the average case time complexity of ${algoNames[algoKey] || algoKey}?`,
+      options: [`A) ${comp.avg}`, `B) ${comp.best}`, `C) ${comp.worst}`, `D) O(1)`],
+      answer: 'A',
+      exp: `Average case: ${comp.avg} - typical input performance`,
+      level: 'medium'
+    });
+  }
+  
+  if (comp.worst) {
+    questions.push({
+      q: `What is the worst case time complexity of ${algoNames[algoKey] || algoKey}?`,
+      options: [`A) ${comp.worst}`, `B) ${comp.avg}`, `C) ${comp.best}`, `D) O(1)`],
+      answer: 'A',
+      exp: `Worst case: ${comp.worst} - ${comp.note || 'unfavorable input conditions'}`,
+      level: 'medium'
+    });
+  }
+  
+  if (comp.space) {
+    questions.push({
+      q: `What is the space complexity of ${algoNames[algoKey] || algoKey}?`,
+      options: [`A) ${comp.space}`, `B) O(n)`, `C) O(1)`, `D) O(log n)`],
+      answer: 'A',
+      exp: `Space complexity: ${comp.space}`,
+      level: 'easy'
+    });
+  }
+
+  if (comp.note) {
+    const stabilityMatch = comp.note.match(/stable|unstable/i);
+    if (stabilityMatch) {
+      const isStable = stabilityMatch[0].toLowerCase() === 'stable';
+      questions.push({
+        q: `${algoNames[algoKey] || algoKey} is a ___ sort?`,
+        options: ['A) Stable', 'B) Unstable', 'C) Adaptive', 'D) Distribution'],
+        answer: isStable ? 'A' : 'B',
+        exp: comp.note,
+        level: 'easy'
+      });
+    }
+
+    const inPlaceMatch = comp.note.match(/in-place/i);
+    if (inPlaceMatch) {
+      questions.push({
+        q: `${algoNames[algoKey] || algoKey} is an in-place algorithm?`,
+        options: ['A) Yes', 'B) No', 'C) Depends', 'D) Sometimes'],
+        answer: 'A',
+        exp: comp.note,
+        level: 'easy'
+      });
+    }
+  }
+
+  return questions;
+}
+
+function generateCodeQuestions(algoKey, topic, lang = 'js') {
+  const questions = [];
+  const langMap = { js: 'JavaScript', python: 'Python', cpp: 'C++', java: 'Java' };
+  const langName = langMap[lang] || 'JavaScript';
+  const code = codeSnippets[algoKey]?.[lang];
+  
+  if (code && code.length > 0) {
+    const codeText = code.join('\n');
+    const algoName = algoNames[algoKey] || algoKey;
+    
+    questions.push({
+      q: `What sorting algorithm does this ${langName} code implement?\n\`\`\`\n${codeText.slice(0, 400)}\n\`\`\``,
+      options: generateAlgoOptions(algoKey),
+      answer: 'A',
+      exp: `This is the implementation of ${algoName}`,
+      level: 'easy'
+    });
+
+    if (algoKey === 'bubble') {
+      questions.push({
+        q: `What does this ${langName} code do in each pass?\n\`\`\`\n${code.slice(0, 6).join('\n')}\n\`\`\``,
+        options: ['A) Finds minimum', 'B) Finds maximum', 'C) Sorts completely', 'D) No change'],
+        answer: 'B',
+        exp: 'Bubble sort pushes largest element to end in each pass',
+        level: 'medium'
+      });
+    }
+
+    if (algoKey === 'selection') {
+      questions.push({
+        q: `What is the time complexity of this ${langName} selection sort?`,
+        options: ['A) O(n)', 'B) O(n log n)', 'C) O(n²)', 'D) O(1)'],
+        answer: 'C',
+        exp: 'Selection sort always has O(n²) regardless of input',
+        level: 'easy'
+      });
+    }
+
+    if (algoKey === 'quick') {
+      questions.push({
+        q: `Which element is used as pivot in this ${langName} quick sort?`,
+        options: ['A) First element', 'B) Last element', 'C) Middle element', 'D) Random'],
+        answer: 'A',
+        exp: 'This implementation uses the first element as pivot',
+        level: 'medium'
+      });
+    }
+
+    if (algoKey === 'merge') {
+      questions.push({
+        q: `What is the space complexity of this ${langName} merge sort?`,
+        options: ['A) O(1)', 'B) O(n)', 'C) O(log n)', 'D) O(n log n)'],
+        answer: 'B',
+        exp: 'Merge sort requires O(n) auxiliary space for merging',
+        level: 'medium'
+      });
+    }
+
+    if (algoKey === 'binary-search') {
+      questions.push({
+        q: `What is the time complexity of this ${langName} binary search?`,
+        options: ['A) O(n)', 'B) O(log n)', 'C) O(n²)', 'D) O(1)'],
+        answer: 'B',
+        exp: 'Binary search halves the search space each iteration',
+        level: 'easy'
+      });
+
+      questions.push({
+        q: `What prerequisite does this ${langName} binary search require?`,
+        options: ['A) Unsorted array', 'B) Sorted array', 'C) Linked list', 'D) Binary tree'],
+        answer: 'B',
+        exp: 'Binary search only works on sorted arrays',
+        level: 'easy'
+      });
+    }
+
+    if (algoKey === 'bfs') {
+      questions.push({
+        q: `What data structure does this ${langName} BFS use?`,
+        options: ['A) Stack', 'B) Queue', 'C) Heap', 'D) Tree'],
+        answer: 'B',
+        exp: 'BFS uses a queue for level-order traversal',
+        level: 'easy'
+      });
+
+      questions.push({
+        q: `What does this ${langName} BFS code guarantee?`,
+        options: ['A) Longest path', 'B) Shortest path', 'C) Minimum spanning tree', 'D) Topological order'],
+        answer: 'B',
+        exp: 'BFS guarantees shortest path in unweighted graphs',
+        level: 'medium'
+      });
+    }
+
+    if (algoKey === 'dfs') {
+      questions.push({
+        q: `What data structure does this ${langName} DFS use?`,
+        options: ['A) Queue', 'B) Stack', 'C) Heap', 'D) Array'],
+        answer: 'B',
+        exp: 'DFS uses a stack (or recursion) for depth-first traversal',
+        level: 'easy'
+      });
+    }
+  }
+
+  return questions;
+}
+
+function generateAlgoOptions(correctAlgo) {
+  const sortingAlgos = ['Bubble Sort', 'Selection Sort', 'Insertion Sort', 'Merge Sort', 'Quick Sort', 'Heap Sort'];
+  const searchingAlgos = ['Linear Search', 'Binary Search', 'Jump Search'];
+  const graphAlgos = ['BFS', 'DFS', 'Dijkstra', 'Prim', 'Kruskal'];
+  
+  let options;
+  if (['bubble', 'selection', 'insertion', 'merge', 'quick', 'heap'].includes(correctAlgo)) {
+    options = sortingAlgos;
+  } else if (['linear-search', 'binary-search', 'jump-search'].includes(correctAlgo)) {
+    options = searchingAlgos;
+  } else {
+    options = graphAlgos;
+  }
+
+  const correctIdx = options.findIndex(o => o.toLowerCase().replace(' ', '-') === correctAlgo);
+  const shuffled = [...options].sort(() => Math.random() - 0.5);
+  const correctLabel = shuffled.indexOf(options[correctIdx]);
+  
+  const letterMap = ['A', 'B', 'C', 'D'];
+  return shuffled.map((opt, i) => `${letterMap[i]}) ${opt}`);
 }
 
 export default function QuizPanel({ topic, onComplete, subTopic = null }) {
@@ -278,6 +578,7 @@ export default function QuizPanel({ topic, onComplete, subTopic = null }) {
   const [questionMode, setQuestionMode] = useState('general');
   const [question, setQuestion] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMode, setLoadingMode] = useState(null);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -288,6 +589,8 @@ export default function QuizPanel({ topic, onComplete, subTopic = null }) {
   const [lang, setLang] = useLang('js');
 
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [error, setError] = useState(null);
+  const [errorType, setErrorType] = useState(null);
 
   const handleStart = async () => {
     console.log('Starting quiz - resetting state');
@@ -295,21 +598,39 @@ export default function QuizPanel({ topic, onComplete, subTopic = null }) {
     setScore(0);
     setCompleted(false);
     setStarted(true);
+    setError(null);
     setIsTransitioning(true);
     await loadQuestion();
     setIsTransitioning(false);
+  };
+
+  const handleRetry = async () => {
+    setError(null);
+    setErrorType(null);
+    setIsTransitioning(true);
+    await loadQuestion(true);
+    setIsTransitioning(false);
+  };
+
+  const handleUseBuiltIn = () => {
+    setError(null);
+    setErrorType(null);
+    setLoading(false);
   };
 
   const getActualQuestionType = () => {
     return questionMode;
   };
 
-  const loadQuestion = useCallback(async () => {
+  const loadQuestion = useCallback(async (retryWithAI = false) => {
     setLoading(true);
     setSelectedAnswer(null);
     setSubmitted(false);
     setFeedback(null);
     setSource('loading');
+    setError(null);
+    setErrorType(null);
+    setLoadingMode(null);
 
     const actualType = getActualQuestionType();
     const actualSubTopic = subTopic || topic;
@@ -320,17 +641,44 @@ export default function QuizPanel({ topic, onComplete, subTopic = null }) {
     let questionData = null;
     let questionSource = 'built-in';
 
-    if (hasValidKey) {
+    if (hasValidKey || retryWithAI) {
+      setLoadingMode('ai');
       try {
         questionData = await generateQuestion(topic, actualSubTopic, 'medium', 'mcq', actualType, lang);
         questionSource = 'ai';
       } catch (err) {
-        console.log('AI failed, using built-in:', err.message);
-        questionData = getRandomQuestion(topic, actualType);
+        console.log('AI failed:', err.message);
+        const errorMsg = err.message || 'Unknown error';
+        
+        let errorMessage = 'Unable to generate AI question.';
+        if (errorMsg.includes('429') || errorMsg.includes('rate limit')) {
+          errorMessage = 'AI service is rate limited. Please try again.';
+        } else if (errorMsg.includes('401') || errorMsg.includes('unauthorized') || errorMsg.includes('API key')) {
+          errorMessage = 'AI service authentication failed.';
+        } else if (errorMsg.includes('500') || errorMsg.includes('server error')) {
+          errorMessage = 'AI service is temporarily unavailable.';
+        } else if (errorMsg.includes('timeout') || errorMsg.includes('Fetch') || errorMsg.includes('network') || errorMsg.includes('Failed to fetch')) {
+          errorMessage = 'Network error. Could not connect to AI service.';
+        } else if (errorMsg.includes('Parsing')) {
+          errorMessage = 'AI returned invalid response format.';
+        } else {
+          errorMessage = `AI error: ${errorMsg.substring(0, 80)}`;
+        }
+        
+        questionData = getRandomQuestion(topic, actualType, lang);
         questionSource = 'built-in';
+        
+        setError(errorMessage);
+        setErrorType('ai_failed');
+        setLoadingMode('error');
+        setQuestion(questionData);
+        setSource(questionSource);
+        return;
       }
     } else {
-      questionData = getRandomQuestion(topic, actualType);
+      setLoadingMode('built-in');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      questionData = getRandomQuestion(topic, actualType, lang);
       questionSource = 'built-in';
     }
     
@@ -341,6 +689,7 @@ export default function QuizPanel({ topic, onComplete, subTopic = null }) {
     setQuestion(questionData);
     setSource(questionSource);
     setLoading(false);
+    setLoadingMode(null);
   }, [topic, subTopic, questionMode, lang]);
 
   const handleSubmit = () => {
@@ -474,9 +823,46 @@ export default function QuizPanel({ topic, onComplete, subTopic = null }) {
 
   if (loading) {
     return (
-      <div className="loading">
-        <div className="loading-spinner"></div>
-        <p>Loading question...</p>
+      <div className="quiz-container" style={{ textAlign: 'center', padding: '3rem 2rem' }}>
+        {error ? (
+          <>
+            <div style={{ 
+              background: 'rgba(255, 107, 107, 0.15)', 
+              border: '1px solid var(--error)', 
+              borderRadius: '12px', 
+              padding: '1.5rem',
+              marginBottom: '1.5rem'
+            }}>
+              <div style={{ color: 'var(--error)', marginBottom: '0.5rem', fontSize: '1.2rem', fontWeight: '600' }}>
+                ⚠️ Unable to generate AI question
+              </div>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '0' }}>
+                {error}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={handleRetry} disabled={isTransitioning}>
+                🔄 Try Again (AI)
+              </button>
+              <button className="btn btn-secondary" onClick={handleUseBuiltIn} disabled={isTransitioning}>
+                📚 Use Built-in Questions
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="loading-spinner"></div>
+            <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>
+              {loadingMode === 'ai' ? (
+                <>🤖 Generating AI question...</>
+              ) : loadingMode === 'built-in' ? (
+                <>📚 Loading built-in question...</>
+              ) : (
+                <>Loading question...</>
+              )}
+            </p>
+          </>
+        )}
       </div>
     );
   }
@@ -523,7 +909,7 @@ export default function QuizPanel({ topic, onComplete, subTopic = null }) {
       </div>
 
       <div className="quiz-question" style={{ borderLeftColor: topicColor.border, borderLeftWidth: '4px', borderLeftStyle: 'solid' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
           {source === 'ai' && <span style={{ 
             background: 'var(--accent3)', 
             color: 'var(--bg)', 
@@ -540,14 +926,28 @@ export default function QuizPanel({ topic, onComplete, subTopic = null }) {
             fontSize: '0.7rem',
             fontWeight: '600'
           }}>📚 Built-in</span>}
-          {question.questionType === 'code' && <span style={{
-            background: 'var(--warning)',
-            color: '#000',
+          {question.algorithm && <span style={{
+            background: topicColor.bg,
+            color: topicColor.text,
             padding: '0.2rem 0.5rem',
             borderRadius: '4px',
             fontSize: '0.7rem',
-            fontWeight: '700'
-          }}>💻 {lang.toUpperCase()}</span>}
+            fontWeight: '600'
+          }}>{algoNames[question.algorithm] || question.algorithm}</span>}
+          {question.questionType === 'code' && <span style={{
+            background: '#3b82f6',
+            color: '#fff',
+            padding: '0.25rem 0.6rem',
+            borderRadius: '4px',
+            fontSize: '0.7rem',
+            fontWeight: '700',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.3rem'
+          }}>
+            <span>💻</span>
+            <span style={{ textTransform: 'uppercase' }}>{(question.language || lang).replace('js', 'JS').replace('python', 'PY').replace('cpp', 'C++').replace('java', 'Java')}</span>
+          </span>}
           {question.questionType === 'complexity' && <span style={{ 
             background: '#f7c59f', 
             color: '#000', 
@@ -556,9 +956,17 @@ export default function QuizPanel({ topic, onComplete, subTopic = null }) {
             fontSize: '0.7rem',
             fontWeight: '700'
           }}>📊 Complexity</span>}
+          {question.level && <span style={{
+            background: 'var(--surface2)',
+            color: 'var(--text)',
+            padding: '0.2rem 0.5rem',
+            borderRadius: '4px',
+            fontSize: '0.65rem',
+            textTransform: 'capitalize'
+          }}>{question.level}</span>}
         </span>
         
-        {question.questionType === 'code' && question.question.includes('```') ? (
+        {question.questionType === 'code' && (question.question.includes('```') || question.question.includes('`')) ? (
           <CodeBlock question={question.question} />
         ) : (
           <h3 className="quiz-question-text">{question.question}</h3>
