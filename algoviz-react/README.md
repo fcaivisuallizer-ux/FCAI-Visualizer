@@ -1,4 +1,8 @@
-# FCAI Algorithm Visualizer
+<p align="center">
+  <img src="assets/fcainew.png" width="120" alt="FCAI-Visualizer Logo" />
+</p>
+
+<h1 align="center">FCAI-Visualizer</h1>
 
 ## An Advanced Educational Platform for Algorithmic and Data Structure Visualization
 
