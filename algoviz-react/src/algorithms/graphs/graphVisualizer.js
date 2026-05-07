@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { THEMES, SPEED_TABLE, colA } from '../trees/avlTree.js';
+import { codeSnippets } from '../../data/algorithmData.js';
 
 const NODE_R = 22;
 const NODE_COLORS = ['#5aa0ff', '#37be73', '#ff913c', '#b450f0', '#f54b82', '#2dc3c8'];
@@ -61,6 +62,17 @@ export function initGraphVisualizer(container) {
     </section>
     <hr class="tree-divider"/>
     <section class="tree-section">
+      <div class="tree-section-label">CODE TRACE</div>
+      <div class="tree-gen-row">
+        <label style="flex:1;font-size:13px;color:var(--text)">Show Code Panel</label>
+        <label class="tree-toggle" style="position:relative;display:inline-block;width:34px;height:20px;">
+          <input type="checkbox" id="gv-trace-toggle" checked style="opacity:0;width:0;height:0;" />
+          <span class="tree-toggle-slider" style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:var(--border);transition:.4s;border-radius:20px;"></span>
+        </label>
+      </div>
+    </section>
+    <hr class="tree-divider"/>
+    <section class="tree-section">
       <div class="tree-section-label">EXPORT / PRINT</div>
       <button class="tree-btn tree-btn-ghost sm" id="gv-btn-adj-list">Print Adjacency List</button>
       <button class="tree-btn tree-btn-ghost sm" id="gv-btn-adj-matrix">Print Adjacency Matrix</button>
@@ -87,7 +99,8 @@ export function initGraphVisualizer(container) {
   const canvasWrap = document.createElement('main');
   canvasWrap.className = 'tree-canvas-wrap';
   canvasWrap.innerHTML = `
-    <canvas class="tree-canvas" id="gv-canvas"></canvas>
+    <canvas class="tree-canvas" id="gv-canvas" role="img" aria-label="Graph Visualization Canvas"></canvas>
+    <div aria-live="polite" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;" id="gv-aria-live"></div>
     <div class="tree-live-stats">
       <div class="tree-ls-label">LIVE STATS</div>
       <div class="tree-ls-nodes" id="gv-ls-nodes">Nodes: 0</div>
@@ -101,6 +114,22 @@ export function initGraphVisualizer(container) {
     </div>
     <div class="tree-popup" id="gv-export-popup" style="display:none;top:80px;max-width:400px;max-height:300px;overflow:auto">
       <span class="tree-popup-msg" id="gv-export-msg"></span>
+    </div>
+    <div class="tree-code-panel" id="gv-code-panel">
+      <div class="tree-code-header">
+        <span class="tree-code-title">⟨/⟩ Code Trace</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="tree-code-lang-bar" id="gv-code-lang-bar">
+            <button class="tree-code-lang-btn active" data-lang="js">JS</button>
+            <button class="tree-code-lang-btn" data-lang="python">Python</button>
+            <button class="tree-code-lang-btn" data-lang="cpp">C++</button>
+          </div>
+          <button class="tree-code-close-btn" id="gv-code-close" title="Close">✕</button>
+        </div>
+      </div>
+      <div class="tree-code-progress-wrap"><div class="tree-code-progress-bar" id="gv-code-progress"></div></div>
+      <div class="tree-code-step-msg" id="gv-code-step-msg">Perform an operation to see code trace</div>
+      <pre class="tree-code-pre"><code id="gv-code-lines"></code></pre>
     </div>
   `;
 
@@ -140,6 +169,8 @@ export function initGraphVisualizer(container) {
 
   function showPopup(msg, color, dur = 3.5) {
     popupMsg.textContent = msg;
+    const ariaLive = canvasWrap.querySelector('#gv-aria-live');
+    if (ariaLive) ariaLive.textContent = msg;
     popupEl.style.setProperty('--popup-border', color);
     popupEl.style.borderColor = color;
     popupEl.style.display = 'block';
@@ -193,10 +224,88 @@ export function initGraphVisualizer(container) {
   }
 
   const onResize = () => { if (!destroyed) resizeCanvas(); };
-  window.addEventListener('resize', onResize);
+  const resizeObserver = new ResizeObserver(onResize);
+  resizeObserver.observe(container);
   resizeCanvas(); // try immediately
   // Also retry after layout in case clientWidth was 0
   requestAnimationFrame(() => { if (!destroyed) resizeCanvas(); });
+
+  // ── Code Panel Logic ────────────────────────────────────────────────────
+  const codeLinesEl = canvasWrap.querySelector('#gv-code-lines');
+  const codeStepMsgEl = canvasWrap.querySelector('#gv-code-step-msg');
+  const codeLangBar = canvasWrap.querySelector('#gv-code-lang-bar');
+  const codeProgressBar = canvasWrap.querySelector('#gv-code-progress');
+  const codePanel = canvasWrap.querySelector('#gv-code-panel');
+  const codeCloseBtn = canvasWrap.querySelector('#gv-code-close');
+  let currentLang = 'js';
+  let traceEnabled = true;
+
+  const traceToggle = panel.querySelector('#gv-trace-toggle');
+  const toggleSlider = traceToggle.nextElementSibling;
+  // Apply initial toggle styling
+  toggleSlider.style.backgroundColor = traceEnabled ? 'var(--accent)' : 'var(--border)';
+  toggleSlider.innerHTML = `<span style="position:absolute;height:14px;width:14px;left:${traceEnabled?'17px':'3px'};bottom:3px;background-color:white;transition:.4s;border-radius:50%;"></span>`;
+
+  traceToggle.addEventListener('change', () => {
+    traceEnabled = traceToggle.checked;
+    toggleSlider.style.backgroundColor = traceEnabled ? 'var(--accent)' : 'var(--border)';
+    toggleSlider.querySelector('span').style.left = traceEnabled ? '17px' : '3px';
+    if (!traceEnabled) {
+      codePanel.classList.remove('visible');
+    } else if (graph.bfsRunning) {
+      codePanel.classList.add('visible');
+    }
+  });
+
+  codeCloseBtn.addEventListener('click', () => {
+    codePanel.classList.remove('visible');
+    traceToggle.checked = false;
+    traceEnabled = false;
+    toggleSlider.style.backgroundColor = 'var(--border)';
+    toggleSlider.querySelector('span').style.left = '3px';
+  });
+
+  codeLangBar.querySelectorAll('.tree-code-lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentLang = btn.dataset.lang;
+      codeLangBar.querySelectorAll('.tree-code-lang-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderCodeLines(-1); // Will just update language and keep current active line
+    });
+  });
+
+  let currentActiveLine = -1;
+  function renderCodeLines(activeLineIdx = -1, msg = null, progress = -1) {
+    if (activeLineIdx !== -1) currentActiveLine = activeLineIdx;
+    else activeLineIdx = currentActiveLine;
+
+    if (msg) codeStepMsgEl.textContent = msg;
+    if (progress >= 0) codeProgressBar.style.width = `${progress}%`;
+
+    const codeObj = codeSnippets.bfs;
+    const lines = codeObj[currentLang] || codeObj.js || [];
+    
+    codeLinesEl.innerHTML = lines.map((line, idx) => {
+      const isPast = idx < activeLineIdx;
+      const isActive = idx === activeLineIdx;
+      let cls = 'tree-cline';
+      if (isActive) cls += ' active';
+      else if (isPast) cls += ' visited';
+      return `<div class="${cls}">` +
+             `<span class="tree-cline-num">${idx + 1}</span>` +
+             `<span class="tree-cline-text">${escapeHtml(line)}</span>` +
+             `</div>`;
+    }).join('');
+
+    if (activeLineIdx >= 0) {
+      const activeLineEl = codeLinesEl.querySelector('.tree-cline.active');
+      if (activeLineEl) activeLineEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
 
   // Graph operations
   function createGraph() {
@@ -323,6 +432,12 @@ export function initGraphVisualizer(container) {
     graph.bfsPath = [];
     graph.nodes.forEach(n => { n.state = 'default'; n.pulseTimer = 0; });
 
+    if (traceEnabled) {
+      codePanel.classList.add('visible');
+      codeStepMsgEl.classList.remove('done');
+      renderCodeLines(0, 'Initialize visited set and queue', 0);
+    }
+
     const T = getT();
 
     graph.nodes[startId].state = 'visiting';
@@ -335,7 +450,10 @@ export function initGraphVisualizer(container) {
     await sleep(1200 / SPEED_TABLE[speedIdx]);
     if (destroyed) { bfsActive = false; return; }
 
+    if (traceEnabled) renderCodeLines(3, 'Loop while queue is not empty', 10);
+
     while (graph.bfsQueue.length > 0 && !destroyed) {
+      if (traceEnabled) renderCodeLines(4, 'Dequeue next node', 20);
       const current = graph.bfsQueue.shift();
       graph.bfsCurrent = current;
       graph.nodes[current].state = 'visiting';
@@ -347,6 +465,7 @@ export function initGraphVisualizer(container) {
       panel.querySelector('#gv-queue-display').textContent = `Queue: ${queueStr}`;
       panel.querySelector('#gv-path-display').textContent = `Visited: ${pathStr}`;
 
+      if (traceEnabled) renderCodeLines(5, `Visit node ${current}`, 40);
       showPopup(`Visiting node ${current}`, T.accent2, 1.5);
 
       await sleep(800 / SPEED_TABLE[speedIdx]);
@@ -354,6 +473,8 @@ export function initGraphVisualizer(container) {
 
       graph.nodes[current].state = 'visited';
       graph.bfsPath.push(current);
+
+      if (traceEnabled) renderCodeLines(6, `Check neighbors of ${current}`, 50);
 
       // Find neighbors
       const neighbors = [];
@@ -368,7 +489,9 @@ export function initGraphVisualizer(container) {
 
       for (const nid of neighbors) {
         if (destroyed) { bfsActive = false; return; }
+        if (traceEnabled) renderCodeLines(7, `If neighbor ${nid} not visited...`, 60);
         if (!graph.bfsVisited.has(nid)) {
+          if (traceEnabled) renderCodeLines(8, `Mark ${nid} visited & enqueue`, 80);
           graph.bfsVisited.add(nid);
           graph.bfsQueue.push(nid);
           graph.nodes[nid].state = 'queued';
@@ -386,6 +509,10 @@ export function initGraphVisualizer(container) {
     graph.bfsRunning = false;
     graph.bfsCurrent = null;
     if (!destroyed) {
+      if (traceEnabled) {
+        renderCodeLines(-1, '✓ BFS Complete', 100);
+        codeStepMsgEl.classList.add('done');
+      }
       showPopup(`BFS Complete! Visited: ${graph.bfsPath.join(' → ')}`, T.success, 4);
       setStatus('BFS Complete', `Visited ${graph.bfsPath.length} nodes`);
       panel.querySelector('#gv-queue-display').textContent = '';
@@ -692,7 +819,7 @@ export function initGraphVisualizer(container) {
   function destroy() {
     destroyed = true;
     if (rafId) cancelAnimationFrame(rafId);
-    window.removeEventListener('resize', onResize);
+    resizeObserver.disconnect();
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
     container.innerHTML = '';

@@ -97,7 +97,8 @@ export function initTreeVisualizer(container, type = 'avl') {
   const canvasWrap = document.createElement('main');
   canvasWrap.className = 'tree-canvas-wrap';
   canvasWrap.innerHTML = `
-    <canvas class="tree-canvas" id="tv-canvas"></canvas>
+    <canvas class="tree-canvas" id="tv-canvas" role="img" aria-label="Tree Visualization Canvas"></canvas>
+    <div aria-live="polite" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;" id="tv-aria-live"></div>
     <div class="tree-live-stats">
       <div class="tree-ls-label">LIVE STATS</div>
       <div class="tree-ls-nodes" id="tv-ls-nodes">Nodes: 0</div>
@@ -149,6 +150,8 @@ export function initTreeVisualizer(container, type = 'avl') {
 
   function showPopup(msg, color, dur = 3.5) {
     popupMsg.textContent = msg;
+    const ariaLive = canvasWrap.querySelector('#tv-aria-live');
+    if (ariaLive) ariaLive.textContent = msg;
     popupEl.style.setProperty('--popup-border', color);
     popupEl.style.borderColor = color;
     popupEl.style.display = 'block';
@@ -215,7 +218,8 @@ export function initTreeVisualizer(container, type = 'avl') {
   }
 
   const onResize = () => { if (!destroyed) resizeCanvas(); };
-  window.addEventListener('resize', onResize);
+  const resizeObserver = new ResizeObserver(onResize);
+  resizeObserver.observe(container);
   resizeCanvas();
 
   // ── Input helpers ──────────────────────────────────────────────────────
@@ -709,7 +713,7 @@ function doGenerate() {
   function destroy() {
     destroyed = true;
     if (rafId) cancelAnimationFrame(rafId);
-    window.removeEventListener('resize', onResize);
+    resizeObserver.disconnect();
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
     container.innerHTML = '';

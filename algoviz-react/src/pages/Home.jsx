@@ -5,8 +5,8 @@ const CATEGORIES = [
   { icon: '📊', title: 'Sorting', desc: 'Bubble, Selection, Insertion, Merge, Quick, Heap, Counting, Radix', to: '/sorting', color: '#6c63ff', ready: true },
   { icon: '🔍', title: 'Searching', desc: 'Linear, Binary, and Jump Search with step-by-step visualization', to: '/searching', color: '#ff6584', ready: true },
   { icon: '🗂️', title: 'Data Structures', desc: 'Arrays, Stacks, Queues, and Linked Lists visualized', to: '/data-structures', color: '#f7c59f', ready: true },
-  { icon: '🕸️', title: 'Graphs', desc: 'BFS, DFS, and Dijkstra with interactive graph editor', to: '/graphs', color: '#ffd166', ready: false },
-  { icon: '🎯', title: 'Practice Mode', desc: 'Test your knowledge with algorithm quizzes', to: '/practice', color: '#a78bfa', ready: false },
+  { icon: '🕸️', title: 'Graphs', desc: 'BFS, DFS, and Dijkstra with interactive graph editor', to: '/graphs', color: '#ffd166', ready: true },
+  { icon: '🎯', title: 'Practice Mode', desc: 'Test your knowledge with algorithm quizzes', to: '/practice', color: '#a78bfa', ready: true },
 ];
 
 export default function Home() {

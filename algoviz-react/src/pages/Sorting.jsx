@@ -159,6 +159,9 @@ export default function Sorting() {
         {activeStep && (
           <div className="step-msg">{activeStep.msg}</div>
         )}
+        <div aria-live="polite" style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}>
+          {activeStep ? activeStep.msg : ''}
+        </div>
       </div>
 
       <ControlPanel
@@ -183,7 +186,7 @@ export default function Sorting() {
       <div className="sorting-main">
         <div className="sorting-viz-container">
           <div className="sorting-canvas-wrapper">
-            <canvas ref={canvasRef} />
+            <canvas ref={canvasRef} role="img" aria-label="Sorting Visualization Canvas" />
           </div>
         </div>
 

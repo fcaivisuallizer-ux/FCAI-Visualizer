@@ -4,6 +4,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 import { THEMES, SPEED_TABLE, colA } from '../trees/avlTree.js';
+import { codeSnippets } from '../../data/algorithmData.js';
 
 const NODE_R = 22;
 const NODE_COLORS = ['#5aa0ff', '#37be73', '#ff913c', '#b450f0', '#f54b82', '#2dc3c8'];
@@ -70,6 +71,17 @@ export function initDFSVisualizer(container) {
     </section>
     <hr class="tree-divider"/>
     <section class="tree-section">
+      <div class="tree-section-label">CODE TRACE</div>
+      <div class="tree-gen-row">
+        <label style="flex:1;font-size:13px;color:var(--text)">Show Code Panel</label>
+        <label class="tree-toggle" style="position:relative;display:inline-block;width:34px;height:20px;">
+          <input type="checkbox" id="dfs-trace-toggle" checked style="opacity:0;width:0;height:0;" />
+          <span class="tree-toggle-slider" style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:var(--border);transition:.4s;border-radius:20px;"></span>
+        </label>
+      </div>
+    </section>
+    <hr class="tree-divider"/>
+    <section class="tree-section">
       <div class="tree-section-label">EXPORT / PRINT</div>
       <button class="tree-btn tree-btn-ghost sm" id="dfs-btn-adj-list">Print Adjacency List</button>
       <button class="tree-btn tree-btn-ghost sm" id="dfs-btn-adj-matrix">Print Adjacency Matrix</button>
@@ -96,7 +108,8 @@ export function initDFSVisualizer(container) {
   const canvasWrap = document.createElement('main');
   canvasWrap.className = 'tree-canvas-wrap';
   canvasWrap.innerHTML = `
-    <canvas class="tree-canvas" id="dfs-canvas"></canvas>
+    <canvas class="tree-canvas" id="dfs-canvas" role="img" aria-label="DFS Graph Visualization Canvas"></canvas>
+    <div aria-live="polite" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;" id="dfs-aria-live"></div>
     <div class="tree-live-stats">
       <div class="tree-ls-label">LIVE STATS</div>
       <div class="tree-ls-nodes" id="dfs-ls-nodes">Nodes: 0</div>
@@ -110,6 +123,22 @@ export function initDFSVisualizer(container) {
     </div>
     <div class="tree-popup" id="dfs-export-popup" style="display:none;top:80px;max-width:400px;max-height:300px;overflow:auto">
       <span class="tree-popup-msg" id="dfs-export-msg"></span>
+    </div>
+    <div class="tree-code-panel" id="dfs-code-panel">
+      <div class="tree-code-header">
+        <span class="tree-code-title">⟨/⟩ Code Trace</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="tree-code-lang-bar" id="dfs-code-lang-bar">
+            <button class="tree-code-lang-btn active" data-lang="js">JS</button>
+            <button class="tree-code-lang-btn" data-lang="python">Python</button>
+            <button class="tree-code-lang-btn" data-lang="cpp">C++</button>
+          </div>
+          <button class="tree-code-close-btn" id="dfs-code-close" title="Close">✕</button>
+        </div>
+      </div>
+      <div class="tree-code-progress-wrap"><div class="tree-code-progress-bar" id="dfs-code-progress"></div></div>
+      <div class="tree-code-step-msg" id="dfs-code-step-msg">Perform an operation to see code trace</div>
+      <pre class="tree-code-pre"><code id="dfs-code-lines"></code></pre>
     </div>
   `;
 
@@ -153,6 +182,8 @@ export function initDFSVisualizer(container) {
 
   function showPopup(msg, color, dur = 3.5) {
     popupMsg.textContent = msg;
+    const ariaLive = canvasWrap.querySelector('#dfs-aria-live');
+    if (ariaLive) ariaLive.textContent = msg;
     popupEl.style.setProperty('--popup-border', color);
     popupEl.style.borderColor = color;
     popupEl.style.display = 'block';
@@ -206,9 +237,86 @@ export function initDFSVisualizer(container) {
   }
 
   const onResize = () => { if (!destroyed) resizeCanvas(); };
-  window.addEventListener('resize', onResize);
+  const resizeObserver = new ResizeObserver(onResize);
+  resizeObserver.observe(container);
   resizeCanvas();
   requestAnimationFrame(() => { if (!destroyed) resizeCanvas(); });
+
+  // ── Code Panel Logic ────────────────────────────────────────────────────
+  const codeLinesEl = canvasWrap.querySelector('#dfs-code-lines');
+  const codeStepMsgEl = canvasWrap.querySelector('#dfs-code-step-msg');
+  const codeLangBar = canvasWrap.querySelector('#dfs-code-lang-bar');
+  const codeProgressBar = canvasWrap.querySelector('#dfs-code-progress');
+  const codePanel = canvasWrap.querySelector('#dfs-code-panel');
+  const codeCloseBtn = canvasWrap.querySelector('#dfs-code-close');
+  let currentLang = 'js';
+  let traceEnabled = true;
+
+  const traceToggle = panel.querySelector('#dfs-trace-toggle');
+  const toggleSlider = traceToggle.nextElementSibling;
+  toggleSlider.style.backgroundColor = traceEnabled ? 'var(--accent)' : 'var(--border)';
+  toggleSlider.innerHTML = `<span style="position:absolute;height:14px;width:14px;left:${traceEnabled?'17px':'3px'};bottom:3px;background-color:white;transition:.4s;border-radius:50%;"></span>`;
+
+  traceToggle.addEventListener('change', () => {
+    traceEnabled = traceToggle.checked;
+    toggleSlider.style.backgroundColor = traceEnabled ? 'var(--accent)' : 'var(--border)';
+    toggleSlider.querySelector('span').style.left = traceEnabled ? '17px' : '3px';
+    if (!traceEnabled) {
+      codePanel.classList.remove('visible');
+    } else if (graph.dfsRunning) {
+      codePanel.classList.add('visible');
+    }
+  });
+
+  codeCloseBtn.addEventListener('click', () => {
+    codePanel.classList.remove('visible');
+    traceToggle.checked = false;
+    traceEnabled = false;
+    toggleSlider.style.backgroundColor = 'var(--border)';
+    toggleSlider.querySelector('span').style.left = '3px';
+  });
+
+  codeLangBar.querySelectorAll('.tree-code-lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentLang = btn.dataset.lang;
+      codeLangBar.querySelectorAll('.tree-code-lang-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderCodeLines(-1);
+    });
+  });
+
+  let currentActiveLine = -1;
+  function renderCodeLines(activeLineIdx = -1, msg = null, progress = -1) {
+    if (activeLineIdx !== -1) currentActiveLine = activeLineIdx;
+    else activeLineIdx = currentActiveLine;
+
+    if (msg) codeStepMsgEl.textContent = msg;
+    if (progress >= 0) codeProgressBar.style.width = `${progress}%`;
+
+    const codeObj = codeSnippets.dfs;
+    const lines = codeObj[currentLang] || codeObj.js || [];
+    
+    codeLinesEl.innerHTML = lines.map((line, idx) => {
+      const isPast = idx < activeLineIdx;
+      const isActive = idx === activeLineIdx;
+      let cls = 'tree-cline';
+      if (isActive) cls += ' active';
+      else if (isPast) cls += ' visited';
+      return `<div class="${cls}">` +
+             `<span class="tree-cline-num">${idx + 1}</span>` +
+             `<span class="tree-cline-text">${escapeHtml(line)}</span>` +
+             `</div>`;
+    }).join('');
+
+    if (activeLineIdx >= 0) {
+      const activeLineEl = codeLinesEl.querySelector('.tree-cline.active');
+      if (activeLineEl) activeLineEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
 
   // Graph operations
   function createGraph() {
@@ -371,6 +479,12 @@ export function initDFSVisualizer(container) {
     graph.nodes[startId].pulseTimer = 1.5;
     graph.discoveryTime[startId] = ++graph.time;
 
+    if (traceEnabled) {
+      codePanel.classList.add('visible');
+      codeStepMsgEl.classList.remove('done');
+      renderCodeLines(0, 'Initialize DFS call', 0);
+    }
+
     showPopup(`Starting DFS from node ${startId}`, T.accent, 2);
     setStatus(`DFS from ${startId}`, `Stack: [${startId}]`);
     panel.querySelector('#dfs-stack-display').textContent = `Stack: [${startId}]`;
@@ -380,6 +494,7 @@ export function initDFSVisualizer(container) {
     if (destroyed) { dfsActive = false; return; }
 
     while (graph.dfsStack.length > 0 && !destroyed) {
+      if (traceEnabled) renderCodeLines(1, 'Check if visited. Add to visited set', 20);
       const current = graph.dfsStack[graph.dfsStack.length - 1];
       graph.dfsCurrent = current;
       graph.nodes[current].state = 'visiting';
@@ -414,6 +529,8 @@ export function initDFSVisualizer(container) {
         panel.querySelector('#dfs-stack-display').textContent = `Stack: ${stackStr}`;
         panel.querySelector('#dfs-path-display').textContent = `Visited: ${pathStr}`;
 
+        if (traceEnabled) renderCodeLines(4, `Check neighbor ${next}`, 60);
+
         showPopup(`Exploring ${next} via ${edgeType} edge`, getEdgeColor(edgeType), 1.5);
         await sleep(900 / SPEED_TABLE[speedIdx]);
       } else {
@@ -430,6 +547,8 @@ export function initDFSVisualizer(container) {
         panel.querySelector('#dfs-stack-display').textContent = `Stack: ${stackStr}`;
         panel.querySelector('#dfs-path-display').textContent = `Visited: ${pathStr}`;
 
+        if (traceEnabled) renderCodeLines(5, `Backtrack from ${popped}`, 80);
+
         showPopup(`Finished node ${popped} (time: ${graph.finishTime[popped]})`, T.accent2, 1);
         await sleep(700 / SPEED_TABLE[speedIdx]);
       }
@@ -440,6 +559,10 @@ export function initDFSVisualizer(container) {
     graph.dfsRunning = false;
     graph.dfsCurrent = null;
     if (!destroyed) {
+      if (traceEnabled) {
+        renderCodeLines(-1, '✓ DFS Complete', 100);
+        codeStepMsgEl.classList.add('done');
+      }
       const pathStr = graph.dfsPath.join(' → ');
       showPopup(`DFS Complete! Path: ${pathStr}`, T.success, 4);
       setStatus('DFS Complete', `Visited ${graph.dfsPath.length} nodes`);
@@ -736,7 +859,7 @@ export function initDFSVisualizer(container) {
   function destroy() {
     destroyed = true;
     if (rafId) cancelAnimationFrame(rafId);
-    window.removeEventListener('resize', onResize);
+    resizeObserver.disconnect();
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
     container.innerHTML = '';

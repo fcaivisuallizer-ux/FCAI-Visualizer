@@ -113,7 +113,8 @@ export function initDSVisualizer(container, type) {
   const canvasWrap = document.createElement('main');
   canvasWrap.className = 'ds-canvas-wrap';
   canvasWrap.innerHTML = `
-    <canvas class="ds-canvas" id="ds-canvas"></canvas>
+    <canvas class="ds-canvas" id="ds-canvas" role="img" aria-label="Data Structure Visualization Canvas"></canvas>
+    <div aria-live="polite" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;" id="ds-aria-live"></div>
     <div class="ds-live-stats" id="ds-live-stats">
       <div class="ds-ls-label">LIVE STATS</div>
       <div class="ds-ls-item" id="ds-ls-size">Size: 0</div>
@@ -161,6 +162,8 @@ export function initDSVisualizer(container, type) {
 
   function showPopup(msg, color, dur = 3.0) {
     popupMsg.textContent = msg;
+    const ariaLive = canvasWrap.querySelector('#ds-aria-live');
+    if (ariaLive) ariaLive.textContent = msg;
     popupEl.style.setProperty('--popup-border', color);
     popupEl.classList.remove('hidden');
     popupTimer = dur; 

@@ -4,6 +4,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 import { THEMES, SPEED_TABLE, colA } from '../trees/avlTree.js';
+import { codeSnippets } from '../../data/algorithmData.js';
 
 const NODE_R = 22;
 const NODE_COLORS = ['#5aa0ff', '#37be73', '#ff913c', '#b450f0', '#f54b82', '#2dc3c8'];
@@ -53,6 +54,17 @@ export function initDijkstraVisualizer(container) {
     </section>
     <hr class="tree-divider"/>
     <section class="tree-section">
+      <div class="tree-section-label">CODE TRACE</div>
+      <div class="tree-gen-row">
+        <label style="flex:1;font-size:13px;color:var(--text)">Show Code Panel</label>
+        <label class="tree-toggle" style="position:relative;display:inline-block;width:34px;height:20px;">
+          <input type="checkbox" id="dj-trace-toggle" checked style="opacity:0;width:0;height:0;" />
+          <span class="tree-toggle-slider" style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:var(--border);transition:.4s;border-radius:20px;"></span>
+        </label>
+      </div>
+    </section>
+    <hr class="tree-divider"/>
+    <section class="tree-section">
       <div class="tree-section-label">ANIMATION SPEED</div>
       <div class="tree-speed-row">
         <button class="tree-speed-btn active" data-speed="0">Slow</button>
@@ -73,7 +85,8 @@ export function initDijkstraVisualizer(container) {
   const canvasWrap = document.createElement('main');
   canvasWrap.className = 'tree-canvas-wrap';
   canvasWrap.innerHTML = `
-    <canvas class="tree-canvas" id="dj-canvas"></canvas>
+    <canvas class="tree-canvas" id="dj-canvas" role="img" aria-label="Dijkstra Algorithm Visualization Canvas"></canvas>
+    <div aria-live="polite" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;" id="dj-aria-live"></div>
     <div class="tree-live-stats">
       <div class="tree-ls-label">LIVE STATS</div>
       <div class="tree-ls-nodes" id="dj-ls-nodes">Nodes: 0</div>
@@ -84,6 +97,22 @@ export function initDijkstraVisualizer(container) {
     <div class="tree-popup" id="dj-popup" style="display:none">
       <span class="tree-popup-msg" id="dj-popup-msg"></span>
       <div class="tree-popup-progress" id="dj-popup-progress"></div>
+    </div>
+    <div class="tree-code-panel" id="dj-code-panel">
+      <div class="tree-code-header">
+        <span class="tree-code-title">⟨/⟩ Code Trace</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="tree-code-lang-bar" id="dj-code-lang-bar">
+            <button class="tree-code-lang-btn active" data-lang="js">JS</button>
+            <button class="tree-code-lang-btn" data-lang="python">Python</button>
+            <button class="tree-code-lang-btn" data-lang="cpp">C++</button>
+          </div>
+          <button class="tree-code-close-btn" id="dj-code-close" title="Close">✕</button>
+        </div>
+      </div>
+      <div class="tree-code-progress-wrap"><div class="tree-code-progress-bar" id="dj-code-progress"></div></div>
+      <div class="tree-code-step-msg" id="dj-code-step-msg">Perform an operation to see code trace</div>
+      <pre class="tree-code-pre"><code id="dj-code-lines"></code></pre>
     </div>
   `;
 
@@ -122,6 +151,8 @@ export function initDijkstraVisualizer(container) {
 
   function showPopup(msg, color, dur = 3.5) {
     popupMsg.textContent = msg;
+    const ariaLive = canvasWrap.querySelector('#dj-aria-live');
+    if (ariaLive) ariaLive.textContent = msg;
     popupEl.style.setProperty('--popup-border', color);
     popupEl.style.borderColor = color;
     popupEl.style.display = 'block';
@@ -175,9 +206,86 @@ export function initDijkstraVisualizer(container) {
   }
 
   const onResize = () => { if (!destroyed) resizeCanvas(); };
-  window.addEventListener('resize', onResize);
+  const resizeObserver = new ResizeObserver(onResize);
+  resizeObserver.observe(container);
   resizeCanvas();
   requestAnimationFrame(() => { if (!destroyed) resizeCanvas(); });
+
+  // ── Code Panel Logic ────────────────────────────────────────────────────
+  const codeLinesEl = canvasWrap.querySelector('#dj-code-lines');
+  const codeStepMsgEl = canvasWrap.querySelector('#dj-code-step-msg');
+  const codeLangBar = canvasWrap.querySelector('#dj-code-lang-bar');
+  const codeProgressBar = canvasWrap.querySelector('#dj-code-progress');
+  const codePanel = canvasWrap.querySelector('#dj-code-panel');
+  const codeCloseBtn = canvasWrap.querySelector('#dj-code-close');
+  let currentLang = 'js';
+  let traceEnabled = true;
+
+  const traceToggle = panel.querySelector('#dj-trace-toggle');
+  const toggleSlider = traceToggle.nextElementSibling;
+  toggleSlider.style.backgroundColor = traceEnabled ? 'var(--accent)' : 'var(--border)';
+  toggleSlider.innerHTML = `<span style="position:absolute;height:14px;width:14px;left:${traceEnabled?'17px':'3px'};bottom:3px;background-color:white;transition:.4s;border-radius:50%;"></span>`;
+
+  traceToggle.addEventListener('change', () => {
+    traceEnabled = traceToggle.checked;
+    toggleSlider.style.backgroundColor = traceEnabled ? 'var(--accent)' : 'var(--border)';
+    toggleSlider.querySelector('span').style.left = traceEnabled ? '17px' : '3px';
+    if (!traceEnabled) {
+      codePanel.classList.remove('visible');
+    } else if (graph.running) {
+      codePanel.classList.add('visible');
+    }
+  });
+
+  codeCloseBtn.addEventListener('click', () => {
+    codePanel.classList.remove('visible');
+    traceToggle.checked = false;
+    traceEnabled = false;
+    toggleSlider.style.backgroundColor = 'var(--border)';
+    toggleSlider.querySelector('span').style.left = '3px';
+  });
+
+  codeLangBar.querySelectorAll('.tree-code-lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentLang = btn.dataset.lang;
+      codeLangBar.querySelectorAll('.tree-code-lang-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderCodeLines(-1);
+    });
+  });
+
+  let currentActiveLine = -1;
+  function renderCodeLines(activeLineIdx = -1, msg = null, progress = -1) {
+    if (activeLineIdx !== -1) currentActiveLine = activeLineIdx;
+    else activeLineIdx = currentActiveLine;
+
+    if (msg) codeStepMsgEl.textContent = msg;
+    if (progress >= 0) codeProgressBar.style.width = `${progress}%`;
+
+    const codeObj = codeSnippets.dijkstra;
+    const lines = codeObj[currentLang] || codeObj.js || [];
+    
+    codeLinesEl.innerHTML = lines.map((line, idx) => {
+      const isPast = idx < activeLineIdx;
+      const isActive = idx === activeLineIdx;
+      let cls = 'tree-cline';
+      if (isActive) cls += ' active';
+      else if (isPast) cls += ' visited';
+      return `<div class="${cls}">` +
+             `<span class="tree-cline-num">${idx + 1}</span>` +
+             `<span class="tree-cline-text">${escapeHtml(line)}</span>` +
+             `</div>`;
+    }).join('');
+
+    if (activeLineIdx >= 0) {
+      const activeLineEl = codeLinesEl.querySelector('.tree-cline.active');
+      if (activeLineEl) activeLineEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
 
   function createGraph() {
     const count = parseInt(panel.querySelector('#dj-node-count').value, 10);
@@ -306,9 +414,17 @@ export function initDijkstraVisualizer(container) {
     setStatus(`Dijkstra from ${startId}`, 'Initializing distances...');
     updateDistUI();
     
+    if (traceEnabled) {
+      codePanel.classList.add('visible');
+      codeStepMsgEl.classList.remove('done');
+      renderCodeLines(0, 'Initialize distances to Infinity', 5);
+      renderCodeLines(4, 'Set source distance to 0', 10);
+    }
+
     await sleep(1000 / SPEED_TABLE[speedIdx]);
 
     while (graph.visited.size < n && !destroyed) {
+      if (traceEnabled) renderCodeLines(6, 'Loop over unvisited nodes', 20);
       // Find unvisited node with smallest distance
       let u = -1;
       for (let i = 0; i < n; i++) {
@@ -318,6 +434,8 @@ export function initDijkstraVisualizer(container) {
       }
 
       if (u === -1 || graph.dist[u] === Infinity) break;
+
+      if (traceEnabled) renderCodeLines(8, `Pick unvisited node with min dist (${u})`, 30);
 
       graph.current = u;
       graph.visited.add(u);
@@ -341,9 +459,12 @@ export function initDijkstraVisualizer(container) {
       for (const nb of neighbors) {
         if (destroyed) return;
         if (!graph.visited.has(nb.id)) {
+          if (traceEnabled) renderCodeLines(11, `Check neighbor ${nb.id}`, 60);
           graph.nodes[nb.id].state = 'queued';
           const newDist = graph.dist[u] + nb.w;
+          if (traceEnabled) renderCodeLines(12, `Relax edge: dist[u] + w < dist[v]?`, 70);
           if (newDist < graph.dist[nb.id]) {
+            if (traceEnabled) renderCodeLines(13, `Update shortest distance for ${nb.id}`, 80);
             graph.dist[nb.id] = newDist;
             graph.prev[nb.id] = u;
             showPopup(`Updating Node ${nb.id} dist: ${newDist}`, '#48d782', 1);
@@ -360,6 +481,10 @@ export function initDijkstraVisualizer(container) {
     algoActive = false;
     graph.current = null;
     if (!destroyed) {
+      if (traceEnabled) {
+        renderCodeLines(18, '✓ Dijkstra Complete. Return dist map.', 100);
+        codeStepMsgEl.classList.add('done');
+      }
       showPopup('Dijkstra Complete!', T.success, 3);
       setStatus('Dijkstra Complete', 'All reachable nodes processed');
     }
@@ -547,7 +672,7 @@ export function initDijkstraVisualizer(container) {
   function destroy() {
     destroyed = true;
     if (rafId) cancelAnimationFrame(rafId);
-    window.removeEventListener('resize', onResize);
+    resizeObserver.disconnect();
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
     container.innerHTML = '';
