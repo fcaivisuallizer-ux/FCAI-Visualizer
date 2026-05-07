@@ -6,8 +6,16 @@ import Header from './Header';
 const THEME_KEY = 'fcai_visualizer_theme';
 
 export default function Layout() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 1199);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 1199px)');
+    const handleChange = (e) => {
+      setSidebarCollapsed(e.matches);
+    };
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
   // ── Theme: read from localStorage, default to dark ──────────────────
   const [theme, setTheme] = useState(() => {
     try {
