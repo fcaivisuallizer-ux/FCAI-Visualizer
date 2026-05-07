@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/fcainew.png" width="120" alt="FCAI-Visualizer Logo" />
+  <img src="algoviz-react/assets/fcainew.png" width="120" alt="FCAI-Visualizer Logo" />
 </p>
 
 <h1 align="center">FCAI-Visualizer</h1>
