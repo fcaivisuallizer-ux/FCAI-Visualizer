@@ -1,6 +1,18 @@
 {
+{
   "brand": "FCAI-Visualizer",
   "campus": "FCAI-CU",
+  "contact": {
+    "eyebrow": "ابقَ على تواصل",
+    "title": "تواصل معنا",
+    "description": "هل لديك سؤال أو فكرة أو ترغب في التعاون؟ يسعدني التواصل معك.",
+    "email": "البريد الإلكتروني",
+    "emailLabel": "إرسال بريد إلكتروني",
+    "linkedin": "لينكدإن",
+    "linkedinLabel": "فتح الملف الشخصي على لينكدإن",
+    "linkedinAction": "تواصل معي",
+    "madeBy": "صُمّم للتعلّم · يسعدني تواصلك"
+  },
   "header": {
     "eyebrow": "FCAI-CU · منصّة تعليمية",
     "toggleNav": "فتح/إغلاق قائمة التنقّل",
