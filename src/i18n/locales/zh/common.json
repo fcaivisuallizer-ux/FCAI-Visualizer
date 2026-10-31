@@ -1,6 +1,18 @@
 {
+{
   "brand": "FCAI-Visualizer",
   "campus": "FCAI-CU",
+  "contact": {
+    "eyebrow": "保持联系",
+    "title": "联系我们",
+    "description": "如果你有问题、想法或合作意向，欢迎随时联系我。",
+    "email": "电子邮箱",
+    "emailLabel": "发送电子邮件",
+    "linkedin": "LinkedIn",
+    "linkedinLabel": "打开 LinkedIn 个人主页",
+    "linkedinAction": "与我联系",
+    "madeBy": "为学习而打造 · 欢迎联系"
+  },
   "header": {
     "eyebrow": "FCAI-CU · 学习平台",
     "toggleNav": "切换导航",
