@@ -1,0 +1,86 @@
+.contact-section {
+  padding: 34px clamp(20px, 3vw, 40px) 22px;
+  border-top: 1px solid var(--border);
+  background:
+    radial-gradient(ellipse at 12% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 48%),
+    var(--surface);
+}
+
+.contact-section-inner {
+  width: min(100%, 1400px);
+  margin: 0 auto;
+}
+
+.contact-copy { max-width: 650px; }
+.contact-eyebrow {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.contact-copy h2 {
+  margin: 8px 0;
+  color: var(--text);
+  font: 800 clamp(22px, 2.5vw, 30px)/1.2 var(--font-head);
+}
+.contact-copy p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.contact-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+}
+.contact-link {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 13px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--bg);
+  transition: border-color .18s, transform .18s, background .18s;
+}
+.contact-link:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: var(--surface2);
+}
+.contact-link-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+}
+.contact-link-copy { display: grid; min-width: 0; gap: 4px; }
+.contact-link-copy small { color: var(--text-muted); font-size: 11px; }
+.contact-link-copy strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+}
+.contact-external-icon { flex: 0 0 auto; margin-inline-start: auto; color: var(--text-muted); }
+.contact-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 25px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+@media (max-width: 640px) {
+  .contact-links { grid-template-columns: 1fr; }
+  .contact-bottom { flex-direction: column; }
+}
