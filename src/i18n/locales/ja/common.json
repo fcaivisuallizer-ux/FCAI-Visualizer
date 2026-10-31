@@ -1,6 +1,18 @@
 {
+{
   "brand": "FCAI-Visualizer",
   "campus": "FCAI-CU",
+  "contact": {
+    "eyebrow": "お問い合わせ",
+    "title": "お問い合わせ",
+    "description": "ご質問やアイデア、コラボレーションのご相談など、お気軽にご連絡ください。",
+    "email": "メール",
+    "emailLabel": "メールを送信",
+    "linkedin": "LinkedIn",
+    "linkedinLabel": "LinkedInプロフィールを開く",
+    "linkedinAction": "つながりましょう",
+    "madeBy": "学びのために開発 · お気軽にご連絡ください"
+  },
   "header": {
     "eyebrow": "FCAI-CU · 学習プラットフォーム",
     "toggleNav": "ナビゲーションを切り替え",
